@@ -1,0 +1,5 @@
+{
+  "name": "T-Rex Run Clone",
+  "description": "An 8-bit monochrome clone of the classic Chrome Dinosaur Game, built with HTML5 Canvas.",
+  "requestFramePermissions": []
+}
