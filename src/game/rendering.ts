@@ -4,7 +4,6 @@ import {
   Enemy,
   Shard,
   Ripple,
-  LightSource,
   LevelUpFragment,
   Star,
   FloatingLabel,
@@ -21,7 +20,6 @@ export interface DrawState {
   enemies: Enemy[];
   shards: Shard[];
   ripples: Ripple[];
-  lightSources: LightSource[];
   levelUpFragments: LevelUpFragment[];
   stars: Star[];
   positionHistory: { x: number; y: number; rotation: number }[];
@@ -72,38 +70,25 @@ export function draw(state: DrawState): void {
     }
   }
 
-  const allLights = [
-    ...state.ripples.map((r) => ({ x: r.x, y: r.y, radius: r.radius, alpha: r.life, color: r.color })),
-    ...state.lightSources.map((ls) => ({ x: ls.x, y: ls.y, radius: ls.radius, alpha: 0.3, color: 'rgba(0, 255, 255, 0.2)' })),
-    { x: state.player.x + state.player.w / 2, y: state.player.y + state.player.h / 2, radius: 850, alpha: 0.5, color: state.colors.NEON_BLUE },
-  ];
+  const playerLight = { x: state.player.x + state.player.w / 2, y: state.player.y + state.player.h / 2, radius: 600, alpha: 0.3, color: state.colors.NEON_BLUE };
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  allLights.forEach((l) => {
-    const grad = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.radius);
-    grad.addColorStop(0, l.color);
-    grad.addColorStop(1, 'transparent');
-    ctx.fillStyle = grad;
-    ctx.globalAlpha = l.alpha;
-    ctx.beginPath();
-    ctx.arc(l.x, l.y, l.radius, 0, Math.PI * 2);
-    ctx.fill();
-  });
+  const grad = ctx.createRadialGradient(playerLight.x, playerLight.y, 0, playerLight.x, playerLight.y, playerLight.radius);
+  grad.addColorStop(0, playerLight.color);
+  grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad;
+  ctx.globalAlpha = playerLight.alpha;
+  ctx.beginPath();
+  ctx.arc(playerLight.x, playerLight.y, playerLight.radius, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 
-  allLights.forEach((l) => {
-    ctx.save();
-    ctx.globalAlpha = Math.min(0.7, l.alpha);
-    ctx.beginPath();
-    ctx.arc(l.x, l.y, l.radius, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.globalCompositeOperation = 'source-over';
-    state.platforms.forEach((p) => drawPlatform(ctx, p, state.gameTime));
-    state.enemies.forEach((e) => drawVectorEntity(ctx, 'enemy', e.x, e.y, e.w, e.h, 1, 1, state.colors.ENEMY, 4, true));
-    state.levelUpFragments.forEach((f) => drawVectorEntity(ctx, 'level_up', f.x, f.y, f.w, f.h, 1, 1, state.colors.LEVEL_UP, 4, true));
-    ctx.restore();
-  });
+  ctx.globalAlpha = 1.0;
+
+  state.platforms.forEach((p) => drawPlatform(ctx, p, state.gameTime));
+  state.enemies.forEach((e) => drawVectorEntity(ctx, 'enemy', e.x, e.y, e.w, e.h, 1, 1, state.colors.ENEMY, 4, true));
+  state.levelUpFragments.forEach((f) => drawVectorEntity(ctx, 'level_up', f.x, f.y, f.w, f.h, 1, 1, state.colors.LEVEL_UP, 4, true));
 
   const isFlickering = state.player.invincibleTimer > 0 && Math.floor(state.player.invincibleTimer / 5) % 2 === 0;
   if (!isFlickering) {

@@ -116,7 +116,6 @@ export function updatePhysics(
 
         if (!player.hasLanded) {
           renderRipple(player.x + player.w / 2, p.y, 400, p.color, state.ripples);
-          state.lightSources.push({ x: player.x + player.w / 2, y: p.y, radius: 850 });
           const particleCount = Math.min(10, Math.floor(Math.abs(impactVelocity) * 5));
           spawnShatter(player.x + player.w / 2, p.y, particleCount, '#00ffff', state.shards);
           player.hasLanded = true;
@@ -205,14 +204,7 @@ export function updatePhysics(
   const targetCameraY = player.y - state.canvasHeight / 2;
   state.cameraY += (targetCameraY - state.cameraY) * 0.1;
 
-  const margin = 1000;
-  state.lightSources = state.lightSources.filter(
-    (ls) =>
-      ls.x + ls.radius > state.cameraX - margin &&
-      ls.x - ls.radius < state.cameraX + state.canvasWidth + margin &&
-      ls.y + ls.radius > state.cameraY - margin &&
-      ls.y - ls.radius < state.cameraY + state.canvasHeight + margin
-  );
+  state.lightSources = [];
 
   state.floatingLabels = state.floatingLabels.filter((l) => l.life > 0);
   state.floatingLabels.forEach((l) => { l.y -= 0.8; l.life--; });

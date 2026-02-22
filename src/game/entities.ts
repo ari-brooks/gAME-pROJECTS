@@ -119,7 +119,7 @@ export function generateMorePlatforms(state: GenerationState): void {
         w = 200;
       } else {
         const platformTypes: Platform['type'][] = [
-          'static', 'horizontal', 'vertical', 'crumble', 'rotating',
+          'static', 'static', 'static', 'crumble',
         ];
         type = platformTypes[Math.floor(Math.random() * platformTypes.length)];
       }
@@ -133,18 +133,11 @@ export function generateMorePlatforms(state: GenerationState): void {
         case 'static':
           newPlatform.color = colors.STATIC;
           break;
-        case 'horizontal':
-        case 'vertical':
-          newPlatform.color = colors.MOVING;
-          break;
         case 'crumble':
           newPlatform.color = colors.CRUMBLE;
           break;
-        case 'rotating':
-          newPlatform.color = colors.ROTATING;
-          newPlatform.angle = 0;
-          newPlatform.rotationSpeed =
-            (randomBetween(0.0174, 0.035)) * (Math.random() > 0.5 ? 1 : -1);
+        default:
+          newPlatform.color = colors.STATIC;
           break;
       }
 
@@ -163,17 +156,6 @@ export function generateMorePlatforms(state: GenerationState): void {
     } while (intersects && attempts < 20);
 
     if (!intersects && newPlatform) {
-      if (state.platformsGeneratedCount > 3) {
-        if (newPlatform.type === 'horizontal') {
-          newPlatform.startX = newPlatform.x;
-          newPlatform.endX = newPlatform.x + randomBetween(100, 300);
-          newPlatform.speed = randomBetween(0.5, 1.5) * (Math.random() > 0.5 ? 1 : -1);
-        } else if (newPlatform.type === 'vertical') {
-          newPlatform.startY = newPlatform.y;
-          newPlatform.endY = newPlatform.y - randomBetween(100, 300);
-          newPlatform.speed = randomBetween(0.5, 1.5) * (Math.random() > 0.5 ? 1 : -1);
-        }
-      }
       platforms.push(newPlatform);
 
       const difficulty = Math.min(0.8, 0.25 + state.score / 5000);

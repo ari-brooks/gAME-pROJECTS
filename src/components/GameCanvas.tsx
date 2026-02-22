@@ -171,7 +171,6 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           enemies: state.enemies,
           shards: state.shards,
           ripples: state.ripples,
-          lightSources: state.lightSources,
           levelUpFragments: state.levelUpFragments,
           stars,
           positionHistory: state.positionHistory,
