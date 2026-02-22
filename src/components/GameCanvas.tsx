@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import {
   Player, Platform, Enemy, Shard, Ripple, LightSource,
-  LevelUpFragment, Star, GameState, ComboState, FloatingLabel,
-  MilestoneState, RunStats,
+  LevelUpFragment, GameState, RunStats, Bomb, BombPickup,
 } from '../types/game';
 import { COLORS, COLORBLIND_COLORS, PHYSICS, UPGRADE_LIMITS, GHOST_DELAY } from '../constants/game';
 import { createPlayer, generateStars, spawnShatter, renderRipple, generateMorePlatforms } from '../game/entities';
@@ -42,6 +41,8 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     const ripples: Ripple[] = [];
     const lightSources: LightSource[] = [];
     const levelUpFragments: LevelUpFragment[] = [];
+    const activeBombs: Bomb[] = [];
+    const bombPickups: BombPickup[] = [];
 
     const startPlatform: Platform = {
       x: 50, y: canvas.height - 100, w: 200, h: 10,
@@ -54,7 +55,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     player.hasLanded = true;
 
     const genState = {
-      platforms, enemies, levelUpFragments,
+      platforms, enemies, levelUpFragments, bombPickups,
       generationX: 0,
       platformsGeneratedCount: 0,
       score: 0,
@@ -72,6 +73,8 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       ripples,
       lightSources,
       levelUpFragments,
+      activeBombs,
+      bombPickups,
       keys: keysRef.current,
       cameraX: 0,
       cameraY: 0,
@@ -140,6 +143,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
         platforms: state.platforms,
         enemies: state.enemies,
         levelUpFragments: state.levelUpFragments,
+        bombPickups: state.bombPickups,
         generationX: state.generationX,
         platformsGeneratedCount: state.platformsGeneratedCount,
         score: state.score,
@@ -173,6 +177,8 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           shards: state.shards,
           ripples: state.ripples,
           levelUpFragments: state.levelUpFragments,
+          activeBombs: state.activeBombs,
+          bombPickups: state.bombPickups,
           stars,
           positionHistory: state.positionHistory,
           cameraX: state.cameraX,
@@ -233,6 +239,9 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       }
       if (e.code === 'KeyR') {
         triggerPulse();
+      }
+      if (e.code === 'KeyE') {
+        triggerBombDrop();
       }
     }
 
@@ -310,6 +319,25 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
         spawnShatter(e.x + e.w / 2, e.y + e.h / 2, 10, state.colors.ENEMY, shards);
       }
     }
+  }
+
+  function triggerBombDrop() {
+    const state = stateRef.current;
+    if (!state || gameStateRef.current !== 'playing') return;
+    const { player } = state;
+    if (player.bombs <= 0) return;
+    player.bombs--;
+    const bombW = 14;
+    const bombH = 14;
+    state.activeBombs.push({
+      x: player.x + player.w / 2 - bombW / 2,
+      y: player.y + player.h,
+      vx: player.vx,
+      vy: 0,
+      w: bombW,
+      h: bombH,
+      exploded: false,
+    });
   }
 
   function handleUpgradeSelect(choice: number) {

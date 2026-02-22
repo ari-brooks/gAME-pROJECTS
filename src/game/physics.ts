@@ -10,6 +10,8 @@ import {
   FloatingLabel,
   MilestoneState,
   RunStats,
+  Bomb,
+  BombPickup,
 } from '../types/game';
 import { PHYSICS as PHYSICS_CONSTS, COLORS, COMBO_TIMEOUT, COMBO_MAX, MILESTONES } from '../constants/game';
 import { spawnShatter, renderRipple } from './entities';
@@ -23,6 +25,8 @@ export interface PhysicsState {
   ripples: Ripple[];
   lightSources: LightSource[];
   levelUpFragments: LevelUpFragment[];
+  activeBombs: Bomb[];
+  bombPickups: BombPickup[];
   keys: Record<string, boolean>;
   cameraX: number;
   cameraY: number;
@@ -203,6 +207,8 @@ export function updatePhysics(
 
   updateEnemies(state, setGameState);
   updateFragments(state, setGameState);
+  updateBombPickups(state);
+  updateActiveBombs(state);
   updateCombo(state);
   updateMilestone(state);
 
@@ -216,6 +222,7 @@ export function updatePhysics(
   state.platforms = state.platforms.filter((p) => p.x + p.w > state.cameraX);
   state.enemies = state.enemies.filter((e) => e.x + e.w > state.cameraX);
   state.levelUpFragments = state.levelUpFragments.filter((f) => f.x + f.w > state.cameraX);
+  state.bombPickups = state.bombPickups.filter((b) => b.x + b.w > state.cameraX && !b.collected);
 
   updateParticles(state);
 
@@ -397,6 +404,127 @@ function updateMilestone(state: PhysicsState): void {
         state.milestone = { active: true, timer: 120, score: ms };
       }
     }
+  }
+}
+
+function updateBombPickups(state: PhysicsState): void {
+  const { player, bombPickups, shards, floatingLabels, colors } = state;
+  for (let i = bombPickups.length - 1; i >= 0; i--) {
+    const bp = bombPickups[i];
+    if (
+      player.x < bp.x + bp.w &&
+      player.x + player.w > bp.x &&
+      player.y < bp.y + bp.h &&
+      player.y + player.h > bp.y
+    ) {
+      bp.collected = true;
+      player.bombs++;
+      spawnShatter(bp.x + bp.w / 2, bp.y + bp.h / 2, 8, '#ff6600', shards);
+      floatingLabels.push({
+        x: bp.x + bp.w / 2,
+        y: bp.y,
+        text: '+BOMB',
+        life: 60,
+        maxLife: 60,
+        color: '#ff6600',
+      });
+    }
+  }
+}
+
+const BOMB_BLAST_RADIUS = 80;
+
+function triggerBombExplosion(state: PhysicsState, bx: number, by: number): void {
+  const { player, enemies, shards, ripples, floatingLabels, colors } = state;
+
+  state.screenShake = 25;
+  renderRipple(bx, by, BOMB_BLAST_RADIUS * 3, '#ff6600', ripples);
+  renderRipple(bx, by, BOMB_BLAST_RADIUS * 2, '#ffcc00', ripples);
+  spawnShatter(bx, by, 24, '#ff6600', shards);
+  spawnShatter(bx, by, 12, '#ffcc00', shards);
+
+  let killCount = 0;
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const ex = e.x + e.w / 2;
+    const ey = e.y + e.h / 2;
+    const dist = Math.hypot(ex - bx, ey - by);
+    if (dist < BOMB_BLAST_RADIUS) {
+      enemies.splice(i, 1);
+      spawnShatter(ex, ey, 10, colors.ENEMY, shards);
+      state.runStats.enemiesDefeated++;
+      killCount++;
+
+      state.combo.count++;
+      state.combo.timer = COMBO_TIMEOUT;
+      state.combo.multiplier = Math.min(COMBO_MAX, 1 + Math.floor(state.combo.count / 2));
+      const bonusScore = 10 * state.combo.multiplier;
+      state.score += bonusScore;
+    }
+  }
+
+  if (killCount >= 2) {
+    floatingLabels.push({
+      x: bx,
+      y: by - 20,
+      text: `BOOM x${killCount}!`,
+      life: 80,
+      maxLife: 80,
+      color: '#ff6600',
+    });
+  }
+
+  const dx = (player.x + player.w / 2) - bx;
+  const dy = (player.y + player.h / 2) - by;
+  const playerDist = Math.hypot(dx, dy);
+
+  if (playerDist < BOMB_BLAST_RADIUS * 2) {
+    const proximity = 1 - playerDist / (BOMB_BLAST_RADIUS * 2);
+    const rocketForce = PHYSICS_CONSTS.JUMP_FORCE * 2.0 * proximity;
+    player.vy = Math.min(player.vy, rocketForce);
+    if (dx !== 0) {
+      player.vx += (dx / Math.abs(dx)) * 4 * proximity;
+    }
+    player.grounded = false;
+    player.hasLanded = false;
+    player.onPlatform = null;
+  }
+}
+
+function updateActiveBombs(state: PhysicsState): void {
+  const { activeBombs, platforms, cameraY, canvasHeight } = state;
+
+  for (let i = activeBombs.length - 1; i >= 0; i--) {
+    const bomb = activeBombs[i];
+    if (bomb.exploded) { activeBombs.splice(i, 1); continue; }
+
+    bomb.vy += PHYSICS_CONSTS.GRAVITY * 1.2;
+    bomb.x += bomb.vx;
+    bomb.y += bomb.vy;
+
+    let exploded = false;
+
+    if (bomb.vy >= 0) {
+      for (const p of platforms) {
+        if (p.isPhasedOut || p.isCollidable === false) continue;
+        const nextY = bomb.y + bomb.h;
+        const prevY = bomb.y + bomb.h - bomb.vy;
+        const isWithinX = bomb.x < p.x + p.w && bomb.x + bomb.w > p.x;
+        const isCrossingTop = prevY <= p.y + 5 && nextY >= p.y;
+        if (isWithinX && isCrossingTop) {
+          triggerBombExplosion(state, bomb.x + bomb.w / 2, bomb.y + bomb.h / 2);
+          bomb.exploded = true;
+          exploded = true;
+          break;
+        }
+      }
+    }
+
+    if (!exploded && bomb.y > cameraY + canvasHeight + 300) {
+      bomb.exploded = true;
+    }
+
+    if (bomb.exploded) activeBombs.splice(i, 1);
   }
 }
 

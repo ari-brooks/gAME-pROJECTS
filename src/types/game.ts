@@ -26,6 +26,7 @@ export interface Player {
   platformLastY: number;
   airJumpsRemaining: number;
   isGroundPounding: boolean;
+  bombs: number;
 }
 
 export interface Platform {
@@ -97,6 +98,24 @@ export interface LevelUpFragment {
   y: number;
   w: number;
   h: number;
+}
+
+export interface Bomb {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  w: number;
+  h: number;
+  exploded: boolean;
+}
+
+export interface BombPickup {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  collected: boolean;
 }
 
 export interface Star {

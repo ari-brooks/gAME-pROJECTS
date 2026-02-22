@@ -9,6 +9,8 @@ import {
   FloatingLabel,
   MilestoneState,
   ComboState,
+  Bomb,
+  BombPickup,
 } from '../types/game';
 import { COLORS, GHOST_DELAY, UPGRADE_LIMITS } from '../constants/game';
 
@@ -21,6 +23,8 @@ export interface DrawState {
   shards: Shard[];
   ripples: Ripple[];
   levelUpFragments: LevelUpFragment[];
+  activeBombs: Bomb[];
+  bombPickups: BombPickup[];
   stars: Star[];
   positionHistory: { x: number; y: number; rotation: number }[];
   cameraX: number;
@@ -89,6 +93,8 @@ export function draw(state: DrawState): void {
   state.platforms.forEach((p) => drawPlatform(ctx, p, state.gameTime));
   state.enemies.forEach((e) => drawVectorEntity(ctx, 'enemy', e.x, e.y, e.w, e.h, 1, 1, state.colors.ENEMY, 4, true));
   state.levelUpFragments.forEach((f) => drawVectorEntity(ctx, 'level_up', f.x, f.y, f.w, f.h, 1, 1, state.colors.LEVEL_UP, 4, true));
+  state.bombPickups.forEach((bp) => drawBombPickup(ctx, bp, state.gameTime));
+  state.activeBombs.forEach((b) => drawActiveBomb(ctx, b, state.gameTime));
 
   const isFlickering = state.player.invincibleTimer > 0 && Math.floor(state.player.invincibleTimer / 5) % 2 === 0;
   if (!isFlickering) {
@@ -277,6 +283,73 @@ export function drawPlatform(ctx: CanvasRenderingContext2D, p: Platform, gameTim
   ctx.restore();
 }
 
+function drawBombPickup(ctx: CanvasRenderingContext2D, bp: BombPickup, gameTime: number): void {
+  const cx = bp.x + bp.w / 2;
+  const cy = bp.y + bp.h / 2;
+  const pulse = 0.8 + Math.sin(gameTime * 0.08) * 0.2;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, bp.w * 1.2 * pulse);
+  grad.addColorStop(0, 'rgba(255, 102, 0, 0.6)');
+  grad.addColorStop(1, 'rgba(255, 102, 0, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, bp.w * 1.2 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#ff6600';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy, bp.w / 2 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#ff6600';
+  ctx.globalAlpha = 0.5;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur = 4;
+  ctx.fillText('B', cx, cy + 3.5);
+  ctx.restore();
+}
+
+function drawActiveBomb(ctx: CanvasRenderingContext2D, bomb: Bomb, gameTime: number): void {
+  const cx = bomb.x + bomb.w / 2;
+  const cy = bomb.y + bomb.h / 2;
+  const pulse = 0.7 + Math.sin(gameTime * 0.25) * 0.3;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, bomb.w * 1.5 * pulse);
+  grad.addColorStop(0, 'rgba(255, 102, 0, 0.7)');
+  grad.addColorStop(1, 'rgba(255, 50, 0, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, bomb.w * 1.5 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#ff4400';
+  ctx.shadowColor = '#ff6600';
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(cx, cy, bomb.w / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawUI(state: DrawState): void {
   const { ctx, canvas, player, gameState, levelUpChoice, upgradeErrorTimer, colors, combo, milestone, score } = state;
 
@@ -298,6 +371,17 @@ function drawUI(state: DrawState): void {
   ctx.font = '20px monospace';
   ctx.textAlign = 'right';
   ctx.fillText(`SCORE: ${score}`, canvas.width - 20, 40);
+
+  if (player.bombs > 0) {
+    ctx.save();
+    ctx.fillStyle = '#ff6600';
+    ctx.shadowColor = '#ff6600';
+    ctx.shadowBlur = 8;
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`BOMB: ${player.bombs}  [E]`, canvas.width - 20, 65);
+    ctx.restore();
+  }
 
   if (combo.count >= 2 && combo.timer > 0) {
     const alpha = Math.min(1, combo.timer / 60);

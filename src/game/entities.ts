@@ -1,4 +1,4 @@
-import { Player, Enemy, Platform, Shard, Ripple, LevelUpFragment, Star, LightSource } from '../types/game';
+import { Player, Enemy, Platform, Shard, Ripple, LevelUpFragment, Star, LightSource, BombPickup } from '../types/game';
 import { COLORS, PHYSICS } from '../constants/game';
 import { rectIntersect, randomBetween } from '../utils/math';
 
@@ -29,6 +29,7 @@ export function createPlayer(canvasHeight: number, color: string = COLORS.PLAYER
     platformLastY: 0,
     airJumpsRemaining: 0,
     isGroundPounding: false,
+    bombs: 0,
   };
 }
 
@@ -82,6 +83,7 @@ interface GenerationState {
   platforms: Platform[];
   enemies: Enemy[];
   levelUpFragments: LevelUpFragment[];
+  bombPickups: BombPickup[];
   generationX: number;
   platformsGeneratedCount: number;
   score: number;
@@ -89,7 +91,7 @@ interface GenerationState {
 }
 
 export function generateMorePlatforms(state: GenerationState): void {
-  const { platforms, enemies, levelUpFragments, colors } = state;
+  const { platforms, enemies, levelUpFragments, bombPickups, colors } = state;
 
   for (let i = 0; i < 5; i++) {
     const lastPlatform = platforms[platforms.length - 1];
@@ -199,6 +201,15 @@ export function generateMorePlatforms(state: GenerationState): void {
           y: newPlatform.y - 80,
           w: 25,
           h: 25,
+        });
+      }
+      if (state.platformsGeneratedCount > 3 && Math.random() < 0.12) {
+        bombPickups.push({
+          x: newPlatform.x + newPlatform.w / 2 - 9,
+          y: newPlatform.y - 55,
+          w: 18,
+          h: 18,
+          collected: false,
         });
       }
       state.generationX = newPlatform.x + newPlatform.w;
