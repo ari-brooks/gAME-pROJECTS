@@ -24,6 +24,8 @@ export interface Player {
   color: string;
   platformLastX: number;
   platformLastY: number;
+  airJumpsRemaining: number;
+  isGroundPounding: boolean;
 }
 
 export interface Platform {

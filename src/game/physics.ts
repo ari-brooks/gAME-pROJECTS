@@ -31,6 +31,7 @@ export interface PhysicsState {
   platformsGeneratedCount: number;
   glitchTimer: number;
   canDoubleJump: boolean;
+  airJumpsRemaining: number;
   positionHistory: { x: number; y: number; rotation: number }[];
   score: number;
   generationX: number;
@@ -65,9 +66,18 @@ export function updatePhysics(
   }
   player.vx = clamp(player.vx, -PHYSICS_CONSTS.MAX_SPEED, PHYSICS_CONSTS.MAX_SPEED);
 
+  if ((keys['ArrowDown'] || keys['KeyS']) && !player.grounded && !player.isGroundPounding) {
+    player.isGroundPounding = true;
+    player.vx *= 0.3;
+    player.vy = 22;
+  }
+
   let currentGravity = PHYSICS_CONSTS.GRAVITY;
-  if ((keys['Space'] || keys['ArrowUp']) && player.vy < 0) {
+  if ((keys['Space'] || keys['ArrowUp']) && player.vy < 0 && !player.isGroundPounding) {
     currentGravity *= PHYSICS_CONSTS.JUMP_HOLD_GRAVITY_MULT;
+  }
+  if (player.isGroundPounding) {
+    currentGravity *= 3.5;
   }
   player.vy += currentGravity;
 
@@ -118,6 +128,14 @@ export function updatePhysics(
           player.relativeAngle = Math.atan2(dy, dx) - (p.angle || 0);
         }
 
+        if (player.isGroundPounding) {
+          player.isGroundPounding = false;
+          state.screenShake = 20;
+          renderRipple(player.x + player.w / 2, p.y, 600, '#00ffff', state.ripples);
+          spawnShatter(player.x + player.w / 2, p.y, 18, '#00ffff', state.shards);
+          player.hasLanded = true;
+        }
+
         if (!player.hasLanded) {
           renderRipple(player.x + player.w / 2, p.y, 400, p.color, state.ripples);
           const particleCount = Math.min(10, Math.floor(Math.abs(impactVelocity) * 5));
@@ -144,6 +162,7 @@ export function updatePhysics(
 
         player.onPlatformType = p.type;
         state.canDoubleJump = false;
+        state.airJumpsRemaining = 0;
 
         if (p.type === 'crumble' && !p.isCrumbling) {
           p.isCrumbling = true;

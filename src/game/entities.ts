@@ -27,6 +27,8 @@ export function createPlayer(canvasHeight: number, color: string = COLORS.PLAYER
     color,
     platformLastX: 0,
     platformLastY: 0,
+    airJumpsRemaining: 0,
+    isGroundPounding: false,
   };
 }
 

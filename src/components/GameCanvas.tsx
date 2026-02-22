@@ -79,6 +79,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       screenShake: 0,
       glitchTimer: 0,
       canDoubleJump: false,
+      airJumpsRemaining: 0,
       positionHistory: [],
       score: 0,
       generationX: genState.generationX,
@@ -251,6 +252,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     const state = stateRef.current;
     if (!state || gameStateRef.current !== 'playing') return;
     const { player } = state;
+    if (player.isGroundPounding) return;
     if (player.grounded) {
       if (player.onPlatform && player.onPlatform.type === 'rotating') {
         const p = player.onPlatform;
@@ -266,20 +268,27 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       player.hasLanded = false;
       player.onPlatform = null;
       state.canDoubleJump = true;
+      state.airJumpsRemaining = 2;
       player.scaleX = 0.6;
       player.scaleY = 1.4;
       renderRipple(player.x + player.w / 2, player.y + player.h, 300, state.colors.PLAYER, state.ripples);
       spawnShatter(player.x + player.w / 2, player.y + player.h / 2, 10, state.colors.PLAYER, state.shards);
       player.rotation = Math.random() * Math.PI * 2;
-    } else if (state.canDoubleJump) {
-      player.vy = PHYSICS.JUMP_FORCE * 0.8;
-      state.canDoubleJump = false;
+    } else if (state.airJumpsRemaining > 0) {
+      const jumpsUsed = 2 - state.airJumpsRemaining;
+      const forceMult = Math.pow(0.8, jumpsUsed + 1);
+      player.vy = PHYSICS.JUMP_FORCE * forceMult;
+      state.airJumpsRemaining--;
+      state.canDoubleJump = state.airJumpsRemaining > 0;
       player.hasLanded = false;
       player.onPlatform = null;
       player.scaleX = 0.7;
       player.scaleY = 1.3;
-      renderRipple(player.x + player.w / 2, player.y + player.h / 2, 150, 'rgba(0, 170, 255, 0.5)', state.ripples);
-      spawnShatter(player.x + player.w / 2, player.y + player.h / 2, 10, state.colors.PLAYER, state.shards);
+      const rippleColor = state.airJumpsRemaining === 1
+        ? 'rgba(0, 170, 255, 0.5)'
+        : 'rgba(0, 255, 200, 0.4)';
+      renderRipple(player.x + player.w / 2, player.y + player.h / 2, 150, rippleColor, state.ripples);
+      spawnShatter(player.x + player.w / 2, player.y + player.h / 2, 8, state.colors.PLAYER, state.shards);
     }
   }
 
