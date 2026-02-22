@@ -92,6 +92,8 @@ export default function App() {
         relativeDist: 0,
         hasLanded: false,
         color: COLORS.PLAYER,
+        platformLastX: 0,
+        platformLastY: 0,
       };
     }
 
@@ -345,23 +347,22 @@ export default function App() {
         keys[e.code] = true;
         if (e.code === 'Space' || e.code === 'ArrowUp') {
             if (player.grounded) {
-                // Tangential Velocity Slingshot
                 if (player.onPlatform && player.onPlatform.type === 'rotating') {
                     const p = player.onPlatform;
                     const centerX = p.x + p.w / 2;
                     const centerY = p.y + p.h / 2;
                     const dx = (player.x + player.w / 2) - centerX;
                     const dy = (player.y + player.h / 2) - centerY;
-                    // Tangential vector is (-dy, dx)
                     const tangentialVX = -dy * p.rotationSpeed;
                     const tangentialVY = dx * p.rotationSpeed;
-                    player.vx += tangentialVX * 2.5; // Slingshot boost
+                    player.vx += tangentialVX * 2.5;
                     player.vy += tangentialVY;
                 }
 
                 player.vy = PHYSICS.JUMP_FORCE * (1 + player.upgrades.aero * 0.1);
                 player.grounded = false;
                 player.hasLanded = false;
+                player.onPlatform = null;
                 canDoubleJump = true;
                 player.scaleX = 0.6;
                 player.scaleY = 1.4;
@@ -372,6 +373,7 @@ export default function App() {
                 player.vy = PHYSICS.JUMP_FORCE * 0.8;
                 canDoubleJump = false;
                 player.hasLanded = false;
+                player.onPlatform = null;
                 player.scaleX = 0.7;
                 player.scaleY = 1.3;
                 renderRipple(player.x + player.w/2, player.y + player.h/2, 150, 'rgba(0, 170, 255, 0.5)');
@@ -409,7 +411,7 @@ export default function App() {
         if (keys['ArrowLeft'] || keys['KeyA']) player.vx -= PHYSICS.ACCEL;
         else if (keys['ArrowRight'] || keys['KeyD']) player.vx += PHYSICS.ACCEL;
         else {
-            let currentFriction = PHYSICS.FRICTION;
+            let currentFriction = player.grounded ? 1.0 : PHYSICS.FRICTION;
             if (player.grounded && player.onPlatformType === 'ice') {
                 currentFriction = 0.99;
             }
@@ -423,13 +425,21 @@ export default function App() {
         }
         player.vy += currentGravity;
 
-        // Collision X
-        player.x += player.vx;
+        const wasGrounded = player.grounded;
+        const lastPlatform = player.onPlatform;
 
-        // Collision Y
-        player.y += player.vy;
         player.grounded = false;
         player.onPlatformType = null;
+
+        if (wasGrounded && lastPlatform) {
+            const platformDeltaX = lastPlatform.x - player.platformLastX;
+            const platformDeltaY = lastPlatform.y - player.platformLastY;
+            player.x += platformDeltaX;
+            player.y += platformDeltaY;
+        }
+
+        player.x += player.vx;
+        player.y += player.vy;
 
         // Performance Cleanup: Only check platforms within camera viewport
         const visiblePlatforms = platforms.filter(p => 
@@ -451,11 +461,12 @@ export default function App() {
 
                 if (isWithinX && isCrossingTop) {
                     const impactVelocity = player.vy;
-                    // Hard Snap Logic: Immediately snap to platform top
                     player.y = p.y - player.h;
                     player.vy = 0;
                     player.grounded = true;
                     player.onPlatform = p;
+                    player.platformLastX = p.x;
+                    player.platformLastY = p.y;
 
                     if (p.type === 'rotating') {
                         const centerX = p.x + p.w / 2;
@@ -465,7 +476,7 @@ export default function App() {
                         player.relativeDist = Math.sqrt(dx * dx + dy * dy);
                         player.relativeAngle = Math.atan2(dy, dx) - p.angle;
                     }
-                    
+
                     if (!player.hasLanded) {
                         renderRipple(player.x + player.w/2, p.y, 400, p.color);
                         lightSources.push({ x: player.x + player.w/2, y: p.y, radius: 850 });
@@ -475,7 +486,6 @@ export default function App() {
 
                         if (Math.abs(impactVelocity) > 12) screenShake = 15;
 
-                        // Snap rotation
                         const targetAngles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
                         let currentRotation = player.rotation % (2 * Math.PI);
                         if (currentRotation < 0) currentRotation += 2 * Math.PI;
@@ -491,7 +501,7 @@ export default function App() {
                         }
                         player.rotation = closestTarget;
                     }
-                    
+
                     player.onPlatformType = p.type;
                     canDoubleJump = false;
 
@@ -504,7 +514,6 @@ export default function App() {
                             }
                             break;
                     }
-                    if (p.type === 'horizontal') player.x += p.speed;
                 }
             }
         }
