@@ -1,8 +1,8 @@
 export const PHYSICS = {
   GRAVITY: 0.7,
   FRICTION: 0.85,
-  ACCEL: 1.2,
-  MAX_SPEED: 7,
+  ACCEL: 0.8,
+  MAX_SPEED: 5.5,
   JUMP_FORCE: -15,
   JUMP_HOLD_GRAVITY_MULT: 0.5,
 };

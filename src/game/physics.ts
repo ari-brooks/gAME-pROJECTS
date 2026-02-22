@@ -53,10 +53,14 @@ export function updatePhysics(
 
   const { player, keys } = state;
 
-  if (keys['ArrowLeft'] || keys['KeyA']) player.vx -= PHYSICS_CONSTS.ACCEL;
-  else if (keys['ArrowRight'] || keys['KeyD']) player.vx += PHYSICS_CONSTS.ACCEL;
-  else {
-    const friction = player.grounded && player.onPlatformType === 'ice' ? 0.99 : (player.grounded ? 1.0 : PHYSICS_CONSTS.FRICTION);
+  if (keys['ArrowLeft'] || keys['KeyA']) {
+    player.vx -= PHYSICS_CONSTS.ACCEL;
+    if (player.grounded) player.vx *= 0.88;
+  } else if (keys['ArrowRight'] || keys['KeyD']) {
+    player.vx += PHYSICS_CONSTS.ACCEL;
+    if (player.grounded) player.vx *= 0.88;
+  } else {
+    const friction = player.grounded && player.onPlatformType === 'ice' ? 0.99 : (player.grounded ? 0.75 : PHYSICS_CONSTS.FRICTION);
     player.vx *= friction;
   }
   player.vx = clamp(player.vx, -PHYSICS_CONSTS.MAX_SPEED, PHYSICS_CONSTS.MAX_SPEED);
