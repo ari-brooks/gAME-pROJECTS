@@ -111,7 +111,6 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     resize();
 
     stateRef.current = initState(canvas);
-    canDoubleJumpRef.current = false;
     runCompletedRef.current = false;
     gameStateRef.current = 'playing';
 

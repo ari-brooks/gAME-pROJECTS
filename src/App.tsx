@@ -62,13 +62,18 @@ export default function App() {
     setScreen('playing');
   }
 
+  const personalBestRef = useRef(personalBest);
+  useEffect(() => { personalBestRef.current = personalBest; }, [personalBest]);
+  const playerIdRef = useRef(playerId);
+  useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
+
   const handleRunComplete = useCallback(async (score: number, runStats: RunStats) => {
     setLastRunStats({ ...runStats, score });
-    if (score > personalBest) setPersonalBest(score);
-    if (playerId) {
-      await saveScore(playerId, score, { ...runStats, score });
+    if (score > personalBestRef.current) setPersonalBest(score);
+    if (playerIdRef.current) {
+      await saveScore(playerIdRef.current, score, { ...runStats, score });
     }
-  }, [playerId, personalBest]);
+  }, []);
 
   function handleDeathPlayAgain() {
     setGameKey(k => k + 1);
@@ -78,6 +83,12 @@ export default function App() {
   function handleDeathMenu() {
     setScreen('menu');
   }
+
+  const handleSetGameState = useCallback((s: GameState) => {
+    if (s === 'dead') setScreen('dead');
+    else if (s === 'playing') setScreen('playing');
+    else if (s === 'level_up') setScreen('level_up');
+  }, []);
 
   if (isFirstTime && screen === 'menu') {
     return (
@@ -105,11 +116,7 @@ export default function App() {
             <GameCanvas
               key={gameKey}
               gameState={screen}
-              setGameState={(s) => {
-                if (s === 'dead') setScreen('dead');
-                else if (s === 'playing') setScreen('playing');
-                else if (s === 'level_up') setScreen('level_up');
-              }}
+              setGameState={handleSetGameState}
               settings={settings}
               onRunComplete={handleRunComplete}
               onRegisterJump={fn => { jumpRef.current = fn; }}
