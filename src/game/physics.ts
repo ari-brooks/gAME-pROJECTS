@@ -1,0 +1,413 @@
+import {
+  Player,
+  Platform,
+  Enemy,
+  Shard,
+  Ripple,
+  LevelUpFragment,
+  LightSource,
+  ComboState,
+  FloatingLabel,
+  MilestoneState,
+  RunStats,
+} from '../types/game';
+import { PHYSICS as PHYSICS_CONSTS, COLORS, COMBO_TIMEOUT, COMBO_MAX, MILESTONES } from '../constants/game';
+import { spawnShatter, renderRipple } from './entities';
+import { clamp } from '../utils/math';
+
+export interface PhysicsState {
+  player: Player;
+  platforms: Platform[];
+  enemies: Enemy[];
+  shards: Shard[];
+  ripples: Ripple[];
+  lightSources: LightSource[];
+  levelUpFragments: LevelUpFragment[];
+  keys: Record<string, boolean>;
+  cameraX: number;
+  cameraY: number;
+  gameTime: number;
+  screenShake: number;
+  platformsGeneratedCount: number;
+  glitchTimer: number;
+  canDoubleJump: boolean;
+  positionHistory: { x: number; y: number; rotation: number }[];
+  score: number;
+  generationX: number;
+  combo: ComboState;
+  floatingLabels: FloatingLabel[];
+  milestone: MilestoneState;
+  runStats: RunStats;
+  colors: typeof COLORS;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+export function updatePhysics(
+  state: PhysicsState,
+  setGameState: (s: 'playing' | 'level_up' | 'dead') => void,
+  generateMore: () => void
+): void {
+  state.gameTime++;
+  state.positionHistory.push({ x: state.player.x, y: state.player.y, rotation: state.player.rotation });
+
+  const { player, keys } = state;
+
+  if (keys['ArrowLeft'] || keys['KeyA']) player.vx -= PHYSICS_CONSTS.ACCEL;
+  else if (keys['ArrowRight'] || keys['KeyD']) player.vx += PHYSICS_CONSTS.ACCEL;
+  else {
+    const friction = player.grounded && player.onPlatformType === 'ice' ? 0.99 : (player.grounded ? 1.0 : PHYSICS_CONSTS.FRICTION);
+    player.vx *= friction;
+  }
+  player.vx = clamp(player.vx, -PHYSICS_CONSTS.MAX_SPEED, PHYSICS_CONSTS.MAX_SPEED);
+
+  let currentGravity = PHYSICS_CONSTS.GRAVITY;
+  if ((keys['Space'] || keys['ArrowUp']) && player.vy < 0) {
+    currentGravity *= PHYSICS_CONSTS.JUMP_HOLD_GRAVITY_MULT;
+  }
+  player.vy += currentGravity;
+
+  const wasGrounded = player.grounded;
+  const lastPlatform = player.onPlatform;
+
+  player.grounded = false;
+  player.onPlatformType = null;
+
+  if (wasGrounded && lastPlatform) {
+    const platformDeltaX = lastPlatform.x - player.platformLastX;
+    const platformDeltaY = lastPlatform.y - player.platformLastY;
+    player.x += platformDeltaX;
+    player.y += platformDeltaY;
+  }
+
+  player.x += player.vx;
+  player.y += player.vy;
+
+  const visiblePlatforms = state.platforms.filter(
+    (p) => p.x + p.w > state.cameraX - 1000 && p.x < state.cameraX + state.canvasWidth + 1000
+  );
+
+  for (const p of visiblePlatforms) {
+    if (p.isPhasedOut || p.isCollidable === false) continue;
+
+    if (player.vy >= 0) {
+      const nextY = player.y + player.h;
+      const prevY = player.y + player.h - player.vy;
+      const isWithinX = player.x < p.x + p.w && player.x + player.w > p.x;
+      const isCrossingTop = prevY <= p.y + 5 && nextY >= p.y;
+
+      if (isWithinX && isCrossingTop) {
+        const impactVelocity = player.vy;
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.grounded = true;
+        player.onPlatform = p;
+        player.platformLastX = p.x;
+        player.platformLastY = p.y;
+
+        if (p.type === 'rotating') {
+          const centerX = p.x + p.w / 2;
+          const centerY = p.y + p.h / 2;
+          const dx = player.x + player.w / 2 - centerX;
+          const dy = player.y + player.h / 2 - centerY;
+          player.relativeDist = Math.sqrt(dx * dx + dy * dy);
+          player.relativeAngle = Math.atan2(dy, dx) - (p.angle || 0);
+        }
+
+        if (!player.hasLanded) {
+          renderRipple(player.x + player.w / 2, p.y, 400, p.color, state.ripples);
+          state.lightSources.push({ x: player.x + player.w / 2, y: p.y, radius: 850 });
+          const particleCount = Math.min(10, Math.floor(Math.abs(impactVelocity) * 5));
+          spawnShatter(player.x + player.w / 2, p.y, particleCount, '#00ffff', state.shards);
+          player.hasLanded = true;
+
+          if (Math.abs(impactVelocity) > 12) state.screenShake = 15;
+
+          const targetAngles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+          let currentRotation = player.rotation % (2 * Math.PI);
+          if (currentRotation < 0) currentRotation += 2 * Math.PI;
+          let closestTarget = targetAngles[0];
+          let minDiff = Infinity;
+          for (const target of targetAngles) {
+            const diff = Math.abs(currentRotation - target);
+            const currentMinDiff = Math.min(diff, 2 * Math.PI - diff);
+            if (currentMinDiff < minDiff) {
+              minDiff = currentMinDiff;
+              closestTarget = target;
+            }
+          }
+          player.rotation = closestTarget;
+        }
+
+        player.onPlatformType = p.type;
+        state.canDoubleJump = false;
+
+        if (p.type === 'crumble' && !p.isCrumbling) {
+          p.isCrumbling = true;
+          p.collapseTimer = 30;
+          p.originalColor = p.color;
+        }
+      }
+    }
+  }
+
+  if (!player.grounded) {
+    player.hasLanded = false;
+  }
+
+  updatePlatforms(state);
+
+  if (player.grounded && player.onPlatform && player.onPlatform.type === 'rotating') {
+    const p = player.onPlatform;
+    const centerX = p.x + p.w / 2;
+    const centerY = p.y + p.h / 2;
+    const currentAngle = (p.angle || 0) + player.relativeAngle;
+    player.x = centerX + Math.cos(currentAngle) * player.relativeDist - player.w / 2;
+    player.y = centerY + Math.sin(currentAngle) * player.relativeDist - player.h / 2;
+  }
+
+  if (player.y > state.cameraY + state.canvasHeight + 100) player.health = 0;
+  if (player.health <= 0) {
+    setGameState('dead');
+    spawnShatter(player.x + player.w / 2, player.y + player.h / 2, 10, state.colors.PLAYER, state.shards);
+    renderRipple(player.x + player.w / 2, player.y + player.h / 2, 500, state.colors.ENEMY, state.ripples);
+    return;
+  }
+
+  player.scaleX += (1 - player.scaleX) * 0.1;
+  player.scaleY += (1 - player.scaleY) * 0.1;
+
+  if (player.invincibleTimer > 0) player.invincibleTimer--;
+
+  updateEnemies(state, setGameState);
+  updateFragments(state, setGameState);
+  updateCombo(state);
+  updateMilestone(state);
+
+  state.score = Math.max(state.score, Math.floor(player.x / 10));
+  state.runStats.distanceTraveled = Math.floor(player.x / 10);
+
+  if (player.x + state.canvasWidth > state.generationX) {
+    generateMore();
+  }
+
+  state.platforms = state.platforms.filter((p) => p.x + p.w > state.cameraX);
+  state.enemies = state.enemies.filter((e) => e.x + e.w > state.cameraX);
+  state.levelUpFragments = state.levelUpFragments.filter((f) => f.x + f.w > state.cameraX);
+
+  updateParticles(state);
+
+  if (state.glitchTimer > 0) state.glitchTimer--;
+  if (state.screenShake > 0) state.screenShake--;
+
+  const targetCameraX = player.x - state.canvasWidth / 3;
+  state.cameraX += (targetCameraX - state.cameraX) * 0.1;
+  const targetCameraY = player.y - state.canvasHeight / 2;
+  state.cameraY += (targetCameraY - state.cameraY) * 0.1;
+
+  const margin = 1000;
+  state.lightSources = state.lightSources.filter(
+    (ls) =>
+      ls.x + ls.radius > state.cameraX - margin &&
+      ls.x - ls.radius < state.cameraX + state.canvasWidth + margin &&
+      ls.y + ls.radius > state.cameraY - margin &&
+      ls.y - ls.radius < state.cameraY + state.canvasHeight + margin
+  );
+
+  state.floatingLabels = state.floatingLabels.filter((l) => l.life > 0);
+  state.floatingLabels.forEach((l) => { l.y -= 0.8; l.life--; });
+}
+
+function updatePlatforms(state: PhysicsState): void {
+  const { platforms, gameTime, cameraY, canvasHeight, shards } = state;
+  platforms.forEach((p, i) => {
+    if (p.type === 'rotating') {
+      p.angle = ((p.angle || 0) + (p.rotationSpeed || 0.02));
+    }
+    if (p.type === 'horizontal' && p.speed !== undefined) {
+      p.x += p.speed;
+      if (p.x < (p.startX || 0) || p.x > (p.endX || 0)) p.speed *= -1;
+    } else if (p.type === 'vertical' && p.speed !== undefined) {
+      p.y += p.speed;
+      if (p.y < (p.endY || 0) || p.y > (p.startY || 0)) p.speed *= -1;
+    }
+
+    if (p.type === 'crumble' && p.isCrumbling) {
+      p.collapseTimer = (p.collapseTimer || 0) - 1;
+      p.jitterX = (Math.random() - 0.5) * 2;
+      p.jitterY = (Math.random() - 0.5) * 2;
+      p.color = '#FF4500';
+
+      if (gameTime % 10 === 0) {
+        shards.push({
+          x: p.x + Math.random() * p.w,
+          y: p.y,
+          vx: (Math.random() - 0.5) * 1,
+          vy: -Math.random() * 2,
+          life: 30,
+          type: 'shatter',
+          color: 'rgba(255, 69, 0, 0.5)',
+        });
+      }
+
+      if ((p.collapseTimer || 0) <= 0) {
+        p.isCollidable = false;
+        p.vy = (p.vy || 0) + 0.5;
+        p.y += p.vy || 0;
+        p.jitterX = 0;
+        p.jitterY = 0;
+        if (p.y > cameraY + canvasHeight + 500) {
+          platforms.splice(i, 1);
+        }
+      }
+    }
+
+    if (p.type === 'phasing') {
+      const cycleFrames = 180;
+      const sineValue = Math.sin(gameTime * (2 * Math.PI / cycleFrames));
+      const frameInCycle = gameTime % cycleFrames;
+      if (sineValue > 0) {
+        p.isPhasedOut = false;
+        p.opacity = 0.8;
+        if (frameInCycle >= 60 && frameInCycle < 90) {
+          p.opacity = gameTime % 4 < 2 ? 0.8 : 0.4;
+        }
+      } else {
+        p.isPhasedOut = true;
+        p.opacity = 0.2;
+      }
+    }
+  });
+}
+
+function updateEnemies(
+  state: PhysicsState,
+  setGameState: (s: 'playing' | 'level_up' | 'dead') => void
+): void {
+  const { player, enemies, shards, ripples, gameTime, colors } = state;
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.x += e.vx;
+    if (e.x < e.startX || e.x + e.w > e.endX) e.vx *= -1;
+
+    if (e.type === 'mid-air') {
+      e.y = (e.baseY || 0) + Math.sin(gameTime * 0.05 + (e.hoverOffset || 0)) * 75;
+    }
+
+    if (
+      player.x < e.x + e.w &&
+      player.x + player.w > e.x &&
+      player.y < e.y + e.h &&
+      player.y + player.h > e.y
+    ) {
+      if (player.vy > 0 && player.y + player.h - player.vy <= e.y + 10) {
+        enemies.splice(i, 1);
+        player.vy = PHYSICS_CONSTS.JUMP_FORCE * 0.6;
+        spawnShatter(e.x + e.w / 2, e.y + e.h / 2, 10, colors.ENEMY, shards);
+        renderRipple(e.x, e.y, 300 + player.upgrades.pulse * 50, colors.ENEMY, ripples);
+        state.runStats.enemiesDefeated++;
+
+        state.combo.count++;
+        state.combo.timer = COMBO_TIMEOUT;
+        state.combo.multiplier = Math.min(COMBO_MAX, 1 + Math.floor(state.combo.count / 2));
+
+        if (state.combo.count >= 2) {
+          state.floatingLabels.push({
+            x: e.x + e.w / 2,
+            y: e.y,
+            text: `x${state.combo.count} COMBO!`,
+            life: 60,
+            maxLife: 60,
+            color: colors.ENEMY,
+          });
+        }
+
+        const bonusScore = 10 * state.combo.multiplier;
+        state.score += bonusScore;
+      } else if (player.invincibleTimer <= 0) {
+        player.health--;
+        player.invincibleTimer = 60;
+        state.glitchTimer = 10;
+        player.vx = player.x < e.x ? -10 : 10;
+        player.vy = -5;
+        state.combo.count = 0;
+        state.combo.multiplier = 1;
+        state.combo.timer = 0;
+      }
+    }
+  }
+}
+
+function updateFragments(
+  state: PhysicsState,
+  setGameState: (s: 'playing' | 'level_up' | 'dead') => void
+): void {
+  const { player, levelUpFragments } = state;
+  for (let i = levelUpFragments.length - 1; i >= 0; i--) {
+    const frag = levelUpFragments[i];
+    if (
+      player.x < frag.x + frag.w &&
+      player.x + player.w > frag.x &&
+      player.y < frag.y + frag.h &&
+      player.y + player.h > frag.y
+    ) {
+      levelUpFragments.splice(i, 1);
+      state.runStats.fragmentsCollected++;
+      setGameState('level_up');
+    }
+  }
+}
+
+function updateCombo(state: PhysicsState): void {
+  if (state.combo.timer > 0) {
+    state.combo.timer--;
+  } else {
+    state.combo.count = 0;
+    state.combo.multiplier = 1;
+  }
+}
+
+function updateMilestone(state: PhysicsState): void {
+  if (state.milestone.active) {
+    state.milestone.timer--;
+    if (state.milestone.timer <= 0) state.milestone.active = false;
+    return;
+  }
+  for (const ms of MILESTONES) {
+    if (state.score >= ms && !state.milestone.active) {
+      const alreadyTriggered = (state as any)._triggeredMilestones?.includes(ms);
+      if (!alreadyTriggered) {
+        if (!(state as any)._triggeredMilestones) (state as any)._triggeredMilestones = [];
+        (state as any)._triggeredMilestones.push(ms);
+        state.milestone = { active: true, timer: 120, score: ms };
+      }
+    }
+  }
+}
+
+function updateParticles(state: PhysicsState): void {
+  const { shards, ripples } = state;
+  for (let i = shards.length - 1; i >= 0; i--) {
+    const s = shards[i];
+    if (s.type === 'shatter' || s.type === 'shockwave') {
+      if (s.life > 15) {
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vx *= 0.95;
+        s.vy *= 0.95;
+      }
+      s.life -= 1;
+    } else {
+      s.x += s.vx;
+      s.y += s.vy;
+      s.vy += 0.5;
+      s.life -= 0.02;
+    }
+    if (s.life <= 0) shards.splice(i, 1);
+  }
+  ripples.forEach((r, i) => {
+    r.radius += (r.maxRadius - r.radius) * 0.1;
+    r.life -= 0.02;
+    if (r.life < 0) ripples.splice(i, 1);
+  });
+}
