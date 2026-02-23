@@ -171,23 +171,23 @@ export function generateMorePlatforms(state: GenerationState): void {
           const midX = (lastPlatform.x + lastPlatform.w + newPlatform.x) / 2;
           const midY = (lastPlatform.y + newPlatform.y) / 2;
           enemies.push({
-            x: midX - 12.5,
-            y: midY - 12.5,
-            w: 25,
-            h: 25,
+            x: midX - 18.75,
+            y: midY - 18.75,
+            w: 37.5,
+            h: 37.5,
             vx: speed * (Math.random() > 0.5 ? 1 : -1),
             startX: midX - 50,
             endX: midX + 50,
             type: 'mid-air',
-            baseY: midY - 12.5,
+            baseY: midY - 18.75,
             hoverOffset: Math.random() * Math.PI * 2,
           });
         } else {
           enemies.push({
-            x: newPlatform.x + newPlatform.w / 2 - 12.5,
-            y: newPlatform.y - 25,
-            w: 25,
-            h: 25,
+            x: newPlatform.x + newPlatform.w / 2 - 18.75,
+            y: newPlatform.y - 37.5,
+            w: 37.5,
+            h: 37.5,
             vx: speed * (Math.random() > 0.5 ? 1 : -1),
             startX: newPlatform.x,
             endX: newPlatform.x + newPlatform.w,
