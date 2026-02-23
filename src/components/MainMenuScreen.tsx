@@ -41,6 +41,7 @@ export default function MainMenuScreen({ playerName, personalBest, onPlay, onLea
       rotation: 0,
       floatOffset: 0,
       pulseT: 0,
+      facingRight: true,
     };
 
     let t = 0;
@@ -64,16 +65,24 @@ export default function MainMenuScreen({ playerName, personalBest, onPlay, onLea
         ctx.fill();
       });
 
-      const cx = canvas.width / 2;
+      const marginX = canvas.width * 0.12;
+      const travelWidth = canvas.width - marginX * 2;
+      const pacPeriod = 420;
+      const rawSin = Math.sin((t / pacPeriod) * Math.PI * 2);
+      const cx = marginX + (rawSin * 0.5 + 0.5) * travelWidth;
       const cy = canvas.height * 0.62;
       const floatY = Math.sin(t * 0.018) * 14;
       const r = 18;
+
+      const prevRawSin = Math.sin(((t - 1) / pacPeriod) * Math.PI * 2);
+      player.facingRight = rawSin >= prevRawSin;
 
       player.rotation += 0.008;
       player.pulseT += 0.04;
 
       ctx.save();
       ctx.translate(cx, cy + floatY);
+      ctx.scale(player.facingRight ? 1 : -1, 1);
       ctx.rotate(player.rotation);
 
       const pulse = Math.sin(player.pulseT) * 0.12 + 1;
@@ -110,12 +119,14 @@ export default function MainMenuScreen({ playerName, personalBest, onPlay, onLea
       for (let i = 0; i < trailCount; i++) {
         const age = (i + 1) / trailCount;
         const trailT = t - i * 3;
+        const trailRawSin = Math.sin((trailT / pacPeriod) * Math.PI * 2);
+        const trailX = marginX + (trailRawSin * 0.5 + 0.5) * travelWidth;
         const trailY = cy + Math.sin(trailT * 0.018) * 14;
         const trailRot = player.rotation - i * 0.024;
         const alpha = (1 - age) * 0.18;
 
         ctx.save();
-        ctx.translate(cx, trailY);
+        ctx.translate(trailX, trailY);
         ctx.rotate(trailRot);
         ctx.globalAlpha = alpha;
         ctx.strokeStyle = COLORS.PLAYER;
