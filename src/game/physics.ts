@@ -324,14 +324,7 @@ function updateEnemies(
     ) {
       if (player.vy > 0 && player.y + player.h - player.vy <= e.y + 10) {
         enemies.splice(i, 1);
-        const wasGroundPounding = player.isGroundPounding;
-        player.isGroundPounding = false;
-        const jumpHeld = keys['Space'] || keys['ArrowUp'];
-        player.vy = wasGroundPounding
-          ? PHYSICS_CONSTS.JUMP_FORCE * 1.4
-          : jumpHeld
-          ? PHYSICS_CONSTS.JUMP_FORCE * 1.0
-          : PHYSICS_CONSTS.JUMP_FORCE * 0.6;
+        player.vy = PHYSICS_CONSTS.JUMP_FORCE * 0.6;
         spawnShatter(e.x + e.w / 2, e.y + e.h / 2, 10, colors.ENEMY, shards);
         renderRipple(e.x, e.y, 300 + player.upgrades.pulse * 50, colors.ENEMY, ripples);
         state.runStats.enemiesDefeated++;
