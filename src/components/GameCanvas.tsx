@@ -8,6 +8,7 @@ import { createPlayer, generateStars, spawnShatter, renderRipple, generateMorePl
 import { updatePhysics, PhysicsState } from '../game/physics';
 import { draw } from '../game/rendering';
 import { GameSettings } from './SettingsScreen';
+import { scoreToLevel, getTierDefinition, levelProgressPercent } from '../constants/levels';
 
 interface Props {
   gameState: GameState;
@@ -43,6 +44,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     const levelUpFragments: LevelUpFragment[] = [];
     const activeBombs: Bomb[] = [];
     const bombPickups: BombPickup[] = [];
+    const heartPickups = [];
 
     const startPlatform: Platform = {
       x: 50, y: canvas.height - 100, w: 200, h: 10,
@@ -55,7 +57,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     player.hasLanded = true;
 
     const genState = {
-      platforms, enemies, levelUpFragments, bombPickups,
+      platforms, enemies, levelUpFragments, bombPickups, heartPickups,
       generationX: 0,
       platformsGeneratedCount: 0,
       score: 0,
@@ -75,6 +77,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       levelUpFragments,
       activeBombs,
       bombPickups,
+      heartPickups,
       keys: keysRef.current,
       cameraX: 0,
       cameraY: 0,
@@ -90,7 +93,21 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       combo: { count: 0, timer: 0, multiplier: 1 },
       floatingLabels: [],
       milestone: { active: false, timer: 0, score: 0 },
-      runStats: { score: 0, enemiesDefeated: 0, fragmentsCollected: 0, upgradesAcquired: 0, distanceTraveled: 0 },
+      levelState: {
+        current: 1,
+        previousLevel: 1,
+        justLeveledUp: false,
+        levelUpTimer: 0,
+        isTierTransition: false,
+        tierTransitionTimer: 0,
+        triggeredRewards: new Set<number>(),
+        pendingReward: null,
+        rewardDisplayTimer: 0,
+      },
+      runStats: {
+        score: 0, enemiesDefeated: 0, fragmentsCollected: 0,
+        upgradesAcquired: 0, distanceTraveled: 0, highestLevel: 1, rewardsCollected: 0,
+      },
       colors,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
@@ -144,6 +161,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
         enemies: state.enemies,
         levelUpFragments: state.levelUpFragments,
         bombPickups: state.bombPickups,
+        heartPickups: state.heartPickups,
         generationX: state.generationX,
         platformsGeneratedCount: state.platformsGeneratedCount,
         score: state.score,
@@ -179,6 +197,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           levelUpFragments: state.levelUpFragments,
           activeBombs: state.activeBombs,
           bombPickups: state.bombPickups,
+          heartPickups: state.heartPickups,
           stars,
           positionHistory: state.positionHistory,
           cameraX: state.cameraX,
@@ -194,6 +213,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           combo: state.combo,
           floatingLabels: state.floatingLabels,
           milestone: state.milestone,
+          levelState: state.levelState,
           score: state.score,
           personalBest: 0,
         });

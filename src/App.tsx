@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, RunStats } from './types/game';
-import { savePlayerName, saveScore, getPersonalBest } from './services/database';
+import { savePlayerName, saveScore, getPersonalBest, upsertLevelProgress } from './services/database';
 import GameCanvas from './components/GameCanvas';
 import MainMenuScreen from './components/MainMenuScreen';
 import NameEntryScreen from './components/NameEntryScreen';
@@ -72,6 +72,11 @@ export default function App() {
     if (score > personalBestRef.current) setPersonalBest(score);
     if (playerIdRef.current) {
       await saveScore(playerIdRef.current, score, { ...runStats, score });
+      await upsertLevelProgress(
+        playerIdRef.current,
+        runStats.highestLevel ?? 1,
+        runStats.rewardsCollected ?? 0
+      );
     }
   }, []);
 

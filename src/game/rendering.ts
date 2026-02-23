@@ -11,8 +11,11 @@ import {
   ComboState,
   Bomb,
   BombPickup,
+  LevelState,
+  HeartPickup,
 } from '../types/game';
 import { COLORS, GHOST_DELAY, UPGRADE_LIMITS } from '../constants/game';
+import { scoreToLevel, getTierDefinition, levelProgressPercent, LEVEL_SCORE_THRESHOLDS } from '../constants/levels';
 
 export interface DrawState {
   ctx: CanvasRenderingContext2D;
@@ -25,6 +28,7 @@ export interface DrawState {
   levelUpFragments: LevelUpFragment[];
   activeBombs: Bomb[];
   bombPickups: BombPickup[];
+  heartPickups: HeartPickup[];
   stars: Star[];
   positionHistory: { x: number; y: number; rotation: number }[];
   cameraX: number;
@@ -40,6 +44,7 @@ export interface DrawState {
   combo: ComboState;
   floatingLabels: FloatingLabel[];
   milestone: MilestoneState;
+  levelState: LevelState;
   score: number;
   personalBest: number;
 }
@@ -94,6 +99,7 @@ export function draw(state: DrawState): void {
   state.enemies.forEach((e) => drawVectorEntity(ctx, 'enemy', e.x, e.y, e.w, e.h, 1, 1, state.colors.ENEMY, 4, true));
   state.levelUpFragments.forEach((f) => drawVectorEntity(ctx, 'level_up', f.x, f.y, f.w, f.h, 1, 1, state.colors.LEVEL_UP, 4, true));
   state.bombPickups.forEach((bp) => drawBombPickup(ctx, bp, state.gameTime));
+  state.heartPickups.forEach((hp) => drawHeartPickup(ctx, hp, state.gameTime));
   state.activeBombs.forEach((b) => drawActiveBomb(ctx, b, state.gameTime));
 
   const isFlickering = state.player.invincibleTimer > 0 && Math.floor(state.player.invincibleTimer / 5) % 2 === 0;
@@ -321,6 +327,44 @@ function drawBombPickup(ctx: CanvasRenderingContext2D, bp: BombPickup, gameTime:
   ctx.restore();
 }
 
+function drawHeartPickup(ctx: CanvasRenderingContext2D, hp: HeartPickup, gameTime: number): void {
+  const cx = hp.x + hp.w / 2;
+  const cy = hp.y + hp.h / 2;
+  const pulse = 0.85 + Math.sin(gameTime * 0.07) * 0.15;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, hp.w * 1.4 * pulse);
+  grad.addColorStop(0, 'rgba(255, 68, 68, 0.5)');
+  grad.addColorStop(1, 'rgba(255, 68, 68, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, hp.w * 1.4 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ff4444';
+  ctx.shadowBlur = 10;
+  ctx.scale(pulse, pulse);
+  const sx = cx / pulse;
+  const sy = cy / pulse;
+  const r = hp.w * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy + r * 0.8);
+  ctx.bezierCurveTo(sx - r * 1.2, sy - r * 0.5, sx - r * 2, sy + r * 0.2, sx - r * 1.2, sy + r * 1.5);
+  ctx.bezierCurveTo(sx - r * 0.4, sy + r * 2.4, sx, sy + r * 2.8, sx, sy + r * 2.8);
+  ctx.bezierCurveTo(sx, sy + r * 2.8, sx + r * 0.4, sy + r * 2.4, sx + r * 1.2, sy + r * 1.5);
+  ctx.bezierCurveTo(sx + r * 2, sy + r * 0.2, sx + r * 1.2, sy - r * 0.5, sx, sy + r * 0.8);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255, 68, 68, 0.35)';
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawActiveBomb(ctx: CanvasRenderingContext2D, bomb: Bomb, gameTime: number): void {
   const cx = bomb.x + bomb.w / 2;
   const cy = bomb.y + bomb.h / 2;
@@ -351,7 +395,7 @@ function drawActiveBomb(ctx: CanvasRenderingContext2D, bomb: Bomb, gameTime: num
 }
 
 function drawUI(state: DrawState): void {
-  const { ctx, canvas, player, gameState, levelUpChoice, upgradeErrorTimer, colors, combo, milestone, score } = state;
+  const { ctx, canvas, player, gameState, levelUpChoice, upgradeErrorTimer, colors, combo, milestone, levelState, score } = state;
 
   for (let i = 0; i < player.maxHealth; i++) {
     ctx.strokeStyle = colors.NEON_BLUE;
@@ -384,6 +428,7 @@ function drawUI(state: DrawState): void {
   }
 
   if (combo.count >= 2 && combo.timer > 0) {
+    const bombOffset = player.bombs > 0 ? 25 : 0;
     const alpha = Math.min(1, combo.timer / 60);
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -392,14 +437,19 @@ function drawUI(state: DrawState): void {
     ctx.shadowBlur = 10;
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'right';
-    ctx.fillText(`x${combo.multiplier} STREAK`, canvas.width - 20, 70);
+    ctx.fillText(`x${combo.multiplier} STREAK`, canvas.width - 20, 65 + bombOffset);
     ctx.restore();
   }
 
   drawUpgradeHistory(ctx, player);
+  drawLevelHUD(ctx, canvas, levelState, score, state.gameTime);
 
   if (milestone.active) {
     drawMilestoneBanner(ctx, canvas, milestone, state.gameTime);
+  }
+
+  if (levelState.levelUpTimer > 0) {
+    drawLevelUpBanner(ctx, canvas, levelState, state.gameTime);
   }
 
   if (gameState === 'level_up') {
@@ -430,6 +480,94 @@ function drawUpgradeHistory(ctx: CanvasRenderingContext2D, player: Player): void
       offsetX += 20;
     }
   });
+}
+
+function drawLevelHUD(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  levelState: LevelState,
+  score: number,
+  gameTime: number
+): void {
+  const level = levelState.current;
+  const tier = getTierDefinition(level);
+  const progress = levelProgressPercent(score, level);
+  const barW = 120;
+  const barH = 6;
+  const x = canvas.width / 2 - barW / 2;
+  const y = 14;
+
+  ctx.save();
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = tier.color;
+  ctx.shadowColor = tier.color;
+  ctx.shadowBlur = 6;
+  ctx.fillText(`LVL ${level}  ${tier.name}`, canvas.width / 2, y);
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y + 4, barW, barH);
+
+  if (level < 100) {
+    const fillColor = tier.color;
+    ctx.fillStyle = fillColor;
+    ctx.shadowColor = fillColor;
+    ctx.shadowBlur = 4;
+    ctx.fillRect(x, y + 4, barW * progress, barH);
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x, y + 4, barW, barH);
+  }
+
+  ctx.restore();
+}
+
+function drawLevelUpBanner(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  levelState: LevelState,
+  gameTime: number
+): void {
+  const { current, levelUpTimer, isTierTransition, tierTransitionTimer } = levelState;
+  const tier = getTierDefinition(current);
+  const maxTimer = isTierTransition ? 240 : 150;
+  const alpha = Math.min(1, levelUpTimer / 30) * (levelUpTimer > maxTimer * 0.5 ? 1 : levelUpTimer / (maxTimer * 0.5));
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  if (isTierTransition && tierTransitionTimer > 0) {
+    const flashAlpha = tierTransitionTimer > 200 ? (240 - tierTransitionTimer) / 40 : alpha * 0.08;
+    ctx.fillStyle = tier.color;
+    ctx.globalAlpha = flashAlpha;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = alpha;
+
+    ctx.fillStyle = tier.color;
+    ctx.shadowColor = tier.color;
+    ctx.shadowBlur = 30;
+    ctx.font = 'bold 36px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`TIER ${Math.ceil(current / 20)}: ${tier.name}`, canvas.width / 2, canvas.height / 2 - 20);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '16px monospace';
+    ctx.fillText(tier.description, canvas.width / 2, canvas.height / 2 + 20);
+  } else {
+    ctx.fillStyle = tier.color;
+    ctx.shadowColor = tier.color;
+    ctx.shadowBlur = 16;
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`LEVEL ${current}`, canvas.width / 2, 110);
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
 }
 
 function drawMilestoneBanner(

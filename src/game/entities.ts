@@ -1,5 +1,6 @@
-import { Player, Enemy, Platform, Shard, Ripple, LevelUpFragment, Star, LightSource, BombPickup } from '../types/game';
-import { COLORS, PHYSICS } from '../constants/game';
+import { Player, Enemy, Platform, Shard, Ripple, LevelUpFragment, Star, LightSource, BombPickup, HeartPickup } from '../types/game';
+import { COLORS } from '../constants/game';
+import { getTierDefinition, scoreToLevel } from '../constants/levels';
 import { rectIntersect, randomBetween } from '../utils/math';
 
 export function createPlayer(canvasHeight: number, color: string = COLORS.PLAYER): Player {
@@ -84,6 +85,7 @@ interface GenerationState {
   enemies: Enemy[];
   levelUpFragments: LevelUpFragment[];
   bombPickups: BombPickup[];
+  heartPickups: HeartPickup[];
   generationX: number;
   platformsGeneratedCount: number;
   score: number;
@@ -91,7 +93,9 @@ interface GenerationState {
 }
 
 export function generateMorePlatforms(state: GenerationState): void {
-  const { platforms, enemies, levelUpFragments, bombPickups, colors } = state;
+  const { platforms, enemies, levelUpFragments, bombPickups, heartPickups, colors } = state;
+  const level = scoreToLevel(state.score);
+  const tier = getTierDefinition(level);
 
   for (let i = 0; i < 5; i++) {
     const lastPlatform = platforms[platforms.length - 1];
@@ -103,29 +107,33 @@ export function generateMorePlatforms(state: GenerationState): void {
     let intersects = false;
 
     do {
-      const xGap = randomBetween(100, 350);
+      const xGap = state.platformsGeneratedCount <= 3
+        ? 80
+        : randomBetween(tier.minXGap, tier.maxXGap);
+
       const x = lastPlatform.x + lastPlatform.w + xGap;
 
-      let yGap =
-        state.platformsGeneratedCount <= 3
-          ? 120
-          : randomBetween(120, 280);
-      if (state.platformsGeneratedCount > 3 && state.platformsGeneratedCount % 5 === 0) {
-        yGap = 350;
+      let yGap: number;
+      if (state.platformsGeneratedCount <= 3) {
+        yGap = 100;
+      } else if (state.platformsGeneratedCount % tier.challengeGapEvery === 0) {
+        yGap = tier.challengeGapSize;
+      } else {
+        yGap = randomBetween(tier.minYGap, tier.maxYGap);
       }
+
       const y = lastPlatform.y - yGap;
 
       let type: Platform['type'] = 'static';
-      let w = randomBetween(100, 250);
+      const w = state.platformsGeneratedCount <= 3
+        ? 200
+        : randomBetween(tier.minPlatformWidth, tier.maxPlatformWidth);
 
       if (state.platformsGeneratedCount <= 3) {
         type = 'static';
-        w = 200;
       } else {
-        const platformTypes: Platform['type'][] = [
-          'static', 'static', 'static', 'crumble',
-        ];
-        type = platformTypes[Math.floor(Math.random() * platformTypes.length)];
+        const pool = tier.platformTypes as Platform['type'][];
+        type = pool[Math.floor(Math.random() * pool.length)];
       }
 
       const h = 10;
@@ -139,6 +147,26 @@ export function generateMorePlatforms(state: GenerationState): void {
           break;
         case 'crumble':
           newPlatform.color = colors.CRUMBLE;
+          break;
+        case 'horizontal':
+          newPlatform.color = colors.MOVING;
+          newPlatform.speed = randomBetween(0.8, 2.0) * tier.enemySpeedMult;
+          newPlatform.startX = x - 80;
+          newPlatform.endX = x + 80;
+          break;
+        case 'vertical':
+          newPlatform.color = colors.MOVING;
+          newPlatform.speed = randomBetween(0.6, 1.5) * tier.enemySpeedMult;
+          newPlatform.startY = y + 60;
+          newPlatform.endY = y - 60;
+          break;
+        case 'rotating':
+          newPlatform.color = colors.ROTATING;
+          newPlatform.angle = 0;
+          newPlatform.rotationSpeed = randomBetween(0.01, 0.03);
+          break;
+        case 'phasing':
+          newPlatform.color = colors.PHASING;
           break;
         default:
           newPlatform.color = colors.STATIC;
@@ -162,10 +190,9 @@ export function generateMorePlatforms(state: GenerationState): void {
     if (!intersects && newPlatform) {
       platforms.push(newPlatform);
 
-      const difficulty = Math.min(0.8, 0.25 + state.score / 5000);
-      if (state.platformsGeneratedCount > 3 && Math.random() < difficulty) {
-        const speed = randomBetween(0.75, 1.75) + state.score / 4000;
-        const isMidAir = Math.random() < 0.3;
+      if (state.platformsGeneratedCount > 3 && Math.random() < tier.enemySpawnBase) {
+        const speed = randomBetween(0.75, 1.75) * tier.enemySpeedMult;
+        const isMidAir = Math.random() < tier.midAirEnemyChance;
 
         if (isMidAir) {
           const midX = (lastPlatform.x + lastPlatform.w + newPlatform.x) / 2;
@@ -195,7 +222,9 @@ export function generateMorePlatforms(state: GenerationState): void {
           });
         }
       }
-      if (Math.random() < 0.2) {
+
+      const fragmentChance = level <= 10 ? 0.22 : level <= 30 ? 0.18 : 0.14;
+      if (Math.random() < fragmentChance) {
         levelUpFragments.push({
           x: newPlatform.x + newPlatform.w / 2,
           y: newPlatform.y - 80,
@@ -203,7 +232,9 @@ export function generateMorePlatforms(state: GenerationState): void {
           h: 25,
         });
       }
-      if (state.platformsGeneratedCount > 3 && Math.random() < 0.12) {
+
+      const bombChance = level <= 10 ? 0.10 : level <= 40 ? 0.12 : level <= 70 ? 0.14 : 0.16;
+      if (state.platformsGeneratedCount > 3 && Math.random() < bombChance) {
         bombPickups.push({
           x: newPlatform.x + newPlatform.w / 2 - 9,
           y: newPlatform.y - 55,
@@ -212,6 +243,7 @@ export function generateMorePlatforms(state: GenerationState): void {
           collected: false,
         });
       }
+
       state.generationX = newPlatform.x + newPlatform.w;
     }
   }

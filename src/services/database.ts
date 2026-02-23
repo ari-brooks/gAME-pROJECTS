@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { LeaderboardEntry, RunStats } from '../types/game';
+import { levelToTier } from '../constants/levels';
 
 export async function savePlayerName(displayName: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -49,4 +50,50 @@ export async function getPersonalBest(playerId: string): Promise<number> {
     .maybeSingle();
   if (error) return 0;
   return data?.score ?? 0;
+}
+
+export async function upsertLevelProgress(
+  playerId: string,
+  highestLevel: number,
+  rewardsCollected: number
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from('player_level_progress')
+    .select('id, highest_level_reached, total_rewards_collected')
+    .eq('player_id', playerId)
+    .maybeSingle();
+
+  if (existing) {
+    const shouldUpdate =
+      highestLevel > existing.highest_level_reached ||
+      rewardsCollected > 0;
+    if (!shouldUpdate) return;
+    await supabase.from('player_level_progress').update({
+      highest_level_reached: Math.max(existing.highest_level_reached, highestLevel),
+      highest_tier_reached: levelToTier(Math.max(existing.highest_level_reached, highestLevel)),
+      total_rewards_collected: existing.total_rewards_collected + rewardsCollected,
+      updated_at: new Date().toISOString(),
+    }).eq('player_id', playerId);
+  } else {
+    await supabase.from('player_level_progress').insert({
+      player_id: playerId,
+      highest_level_reached: highestLevel,
+      highest_tier_reached: levelToTier(highestLevel),
+      total_rewards_collected: rewardsCollected,
+    });
+  }
+}
+
+export async function getPlayerLevelProgress(playerId: string): Promise<{ highestLevel: number; highestTier: number; totalRewards: number } | null> {
+  const { data, error } = await supabase
+    .from('player_level_progress')
+    .select('highest_level_reached, highest_tier_reached, total_rewards_collected')
+    .eq('player_id', playerId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    highestLevel: data.highest_level_reached,
+    highestTier: data.highest_tier_reached,
+    totalRewards: data.total_rewards_collected,
+  };
 }

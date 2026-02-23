@@ -12,8 +12,11 @@ import {
   RunStats,
   Bomb,
   BombPickup,
+  LevelState,
+  HeartPickup,
 } from '../types/game';
 import { PHYSICS as PHYSICS_CONSTS, COLORS, COMBO_TIMEOUT, COMBO_MAX, MILESTONES } from '../constants/game';
+import { scoreToLevel, getTierDefinition, levelProgressPercent, LEVEL_REWARDS, TIER_TRANSITION_LEVELS } from '../constants/levels';
 import { spawnShatter, renderRipple } from './entities';
 import { clamp } from '../utils/math';
 
@@ -27,6 +30,7 @@ export interface PhysicsState {
   levelUpFragments: LevelUpFragment[];
   activeBombs: Bomb[];
   bombPickups: BombPickup[];
+  heartPickups: HeartPickup[];
   keys: Record<string, boolean>;
   cameraX: number;
   cameraY: number;
@@ -42,6 +46,7 @@ export interface PhysicsState {
   combo: ComboState;
   floatingLabels: FloatingLabel[];
   milestone: MilestoneState;
+  levelState: LevelState;
   runStats: RunStats;
   colors: typeof COLORS;
   canvasWidth: number;
@@ -208,9 +213,11 @@ export function updatePhysics(
   updateEnemies(state, setGameState);
   updateFragments(state, setGameState);
   updateBombPickups(state);
+  updateHeartPickups(state);
   updateActiveBombs(state);
   updateCombo(state);
   updateMilestone(state);
+  updateLevel(state);
 
   state.score = Math.max(state.score, Math.floor(player.x / 10));
   state.runStats.distanceTraveled = Math.floor(player.x / 10);
@@ -223,6 +230,7 @@ export function updatePhysics(
   state.enemies = state.enemies.filter((e) => e.x + e.w > state.cameraX);
   state.levelUpFragments = state.levelUpFragments.filter((f) => f.x + f.w > state.cameraX);
   state.bombPickups = state.bombPickups.filter((b) => b.x + b.w > state.cameraX && !b.collected);
+  state.heartPickups = state.heartPickups.filter((h) => h.x + h.w > state.cameraX && !h.collected);
 
   updateParticles(state);
 
@@ -525,6 +533,110 @@ function updateActiveBombs(state: PhysicsState): void {
     }
 
     if (bomb.exploded) activeBombs.splice(i, 1);
+  }
+}
+
+function updateHeartPickups(state: PhysicsState): void {
+  const { player, heartPickups, shards, floatingLabels, colors } = state;
+  for (let i = heartPickups.length - 1; i >= 0; i--) {
+    const hp = heartPickups[i];
+    if (
+      player.x < hp.x + hp.w &&
+      player.x + player.w > hp.x &&
+      player.y < hp.y + hp.h &&
+      player.y + player.h > hp.y
+    ) {
+      hp.collected = true;
+      if (player.health < player.maxHealth) {
+        player.health = Math.min(player.maxHealth, player.health + 1);
+      } else {
+        player.maxHealth++;
+        player.health = player.maxHealth;
+      }
+      spawnShatter(hp.x + hp.w / 2, hp.y + hp.h / 2, 10, '#ff4444', shards);
+      floatingLabels.push({
+        x: hp.x + hp.w / 2,
+        y: hp.y - 10,
+        text: '+LIFE',
+        life: 80,
+        maxLife: 80,
+        color: '#ff4444',
+      });
+      state.runStats.rewardsCollected++;
+    }
+  }
+}
+
+function updateLevel(state: PhysicsState): void {
+  const ls = state.levelState;
+
+  if (ls.levelUpTimer > 0) ls.levelUpTimer--;
+  if (ls.tierTransitionTimer > 0) ls.tierTransitionTimer--;
+  if (ls.rewardDisplayTimer > 0) {
+    ls.rewardDisplayTimer--;
+    return;
+  }
+
+  if (ls.pendingReward) {
+    const reward = ls.pendingReward;
+    const { player } = state;
+
+    if (reward.type === 'life') {
+      if (player.health < player.maxHealth) {
+        player.health = Math.min(player.maxHealth, player.health + reward.amount);
+      } else {
+        player.maxHealth += reward.amount;
+        player.health = player.maxHealth;
+      }
+    } else if (reward.type === 'bomb') {
+      player.bombs += reward.amount;
+    } else if (reward.type === 'upgrade_fragment') {
+      state.levelUpFragments.push({
+        x: player.x + player.w / 2 + 60,
+        y: player.y - 80,
+        w: 25,
+        h: 25,
+      });
+    } else if (reward.type === 'score_bonus') {
+      state.score += reward.amount;
+    }
+
+    state.runStats.rewardsCollected++;
+    state.floatingLabels.push({
+      x: player.x + player.w / 2,
+      y: player.y - 40,
+      text: reward.label,
+      life: 100,
+      maxLife: 100,
+      color: reward.color,
+    });
+
+    ls.pendingReward = null;
+  }
+
+  const newLevel = scoreToLevel(state.score);
+  if (newLevel > ls.current) {
+    const isTierTransition = TIER_TRANSITION_LEVELS.has(newLevel);
+    ls.previousLevel = ls.current;
+    ls.current = newLevel;
+    ls.justLeveledUp = true;
+    ls.levelUpTimer = isTierTransition ? 240 : 150;
+    ls.isTierTransition = isTierTransition;
+    if (isTierTransition) ls.tierTransitionTimer = 240;
+    state.runStats.highestLevel = newLevel;
+
+    const reward = LEVEL_REWARDS.find(r => r.level === newLevel && !ls.triggeredRewards.has(r.level));
+    if (reward) {
+      ls.triggeredRewards.add(reward.level);
+      ls.pendingReward = { ...reward };
+      ls.rewardDisplayTimer = 60;
+    }
+
+    if (isTierTransition) {
+      state.screenShake = 12;
+    }
+  } else {
+    ls.justLeveledUp = false;
   }
 }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { RunStats } from '../types/game';
+import { levelToTier, TIER_DEFINITIONS } from '../constants/levels';
 
 interface Props {
   score: number;
@@ -38,13 +39,26 @@ export default function DeathScreen({ score, personalBest, runStats, onPlayAgain
           </div>
         )}
 
+        {runStats.highestLevel > 1 && (() => {
+          const tier = TIER_DEFINITIONS[levelToTier(runStats.highestLevel) - 1];
+          return (
+            <div
+              className="w-full text-center font-mono text-sm py-2 border"
+              style={{ borderColor: tier.color + '44', color: tier.color, textShadow: `0 0 8px ${tier.color}` }}
+            >
+              REACHED LVL {runStats.highestLevel} &mdash; {tier.name}
+            </div>
+          );
+        })()}
+
         <div className="w-full border-t border-[#222] pt-4 flex flex-col gap-2">
           <StatRow label="SCORE" value={score} highlight />
           <StatRow label="BEST" value={isNewBest ? score : personalBest} />
           <div className="border-t border-[#111] my-1" />
+          <StatRow label="LEVEL" value={runStats.highestLevel ?? 1} />
           <StatRow label="DISTANCE" value={runStats.distanceTraveled} />
           <StatRow label="ENEMIES" value={runStats.enemiesDefeated} />
-          <StatRow label="FRAGMENTS" value={runStats.fragmentsCollected} />
+          <StatRow label="REWARDS" value={runStats.rewardsCollected ?? 0} />
           <StatRow label="UPGRADES" value={runStats.upgradesAcquired} />
         </div>
 

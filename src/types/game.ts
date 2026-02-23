@@ -153,12 +153,34 @@ export interface MilestoneState {
   score: number;
 }
 
+export interface LevelState {
+  current: number;
+  previousLevel: number;
+  justLeveledUp: boolean;
+  levelUpTimer: number;
+  isTierTransition: boolean;
+  tierTransitionTimer: number;
+  triggeredRewards: Set<number>;
+  pendingReward: PendingReward | null;
+  rewardDisplayTimer: number;
+}
+
+export interface PendingReward {
+  type: 'life' | 'bomb' | 'upgrade_fragment' | 'score_bonus';
+  amount: number;
+  label: string;
+  color: string;
+  level: number;
+}
+
 export interface RunStats {
   score: number;
   enemiesDefeated: number;
   fragmentsCollected: number;
   upgradesAcquired: number;
   distanceTraveled: number;
+  highestLevel: number;
+  rewardsCollected: number;
 }
 
 export interface LeaderboardEntry {
@@ -167,4 +189,12 @@ export interface LeaderboardEntry {
   score: number;
   run_stats: RunStats | null;
   created_at: string;
+}
+
+export interface HeartPickup {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  collected: boolean;
 }
