@@ -4,7 +4,6 @@ import {
   Enemy,
   Shard,
   Ripple,
-  LevelUpFragment,
   Star,
   FloatingLabel,
   MilestoneState,
@@ -13,6 +12,9 @@ import {
   BombPickup,
   LevelState,
   HeartPickup,
+  AeroPickup,
+  VitalPickup,
+  PulsePickup,
 } from '../types/game';
 import { COLORS, GHOST_DELAY, UPGRADE_LIMITS } from '../constants/game';
 import { scoreToLevel, getTierDefinition, levelProgressPercent, LEVEL_SCORE_THRESHOLDS } from '../constants/levels';
@@ -25,10 +27,12 @@ export interface DrawState {
   enemies: Enemy[];
   shards: Shard[];
   ripples: Ripple[];
-  levelUpFragments: LevelUpFragment[];
   activeBombs: Bomb[];
   bombPickups: BombPickup[];
   heartPickups: HeartPickup[];
+  aeroPickups: AeroPickup[];
+  vitalPickups: VitalPickup[];
+  pulsePickups: PulsePickup[];
   stars: Star[];
   positionHistory: { x: number; y: number; rotation: number }[];
   cameraX: number;
@@ -37,8 +41,6 @@ export interface DrawState {
   glitchTimer: number;
   screenShake: number;
   gameState: string;
-  levelUpChoice: number;
-  upgradeErrorTimer: number;
   colors: typeof COLORS;
   showGrid: boolean;
   combo: ComboState;
@@ -97,9 +99,11 @@ export function draw(state: DrawState): void {
 
   state.platforms.forEach((p) => drawPlatform(ctx, p, state.gameTime));
   state.enemies.forEach((e) => drawVectorEntity(ctx, 'enemy', e.x, e.y, e.w, e.h, 1, 1, state.colors.ENEMY, 4, true));
-  state.levelUpFragments.forEach((f) => drawVectorEntity(ctx, 'level_up', f.x, f.y, f.w, f.h, 1, 1, state.colors.LEVEL_UP, 4, true));
   state.bombPickups.forEach((bp) => drawBombPickup(ctx, bp, state.gameTime));
   state.heartPickups.forEach((hp) => drawHeartPickup(ctx, hp, state.gameTime));
+  state.aeroPickups.forEach((ap) => drawAeroPickup(ctx, ap, state.gameTime));
+  state.vitalPickups.forEach((vp) => drawVitalPickup(ctx, vp, state.gameTime));
+  state.pulsePickups.forEach((pp) => drawPulsePickup(ctx, pp, state.gameTime));
   state.activeBombs.forEach((b) => drawActiveBomb(ctx, b, state.gameTime));
 
   const isFlickering = state.player.invincibleTimer > 0 && Math.floor(state.player.invincibleTimer / 5) % 2 === 0;
@@ -271,6 +275,43 @@ export function drawPlatform(ctx: CanvasRenderingContext2D, p: Platform, gameTim
     ctx.arc(0, 0, 15, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  } else if (p.type === 'spiral') {
+    ctx.save();
+    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+    ctx.rotate(p.angle || 0);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.strokeStyle = '#ffff00';
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, p.w * 0.3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (p.type === 'bounce') {
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.8 + Math.sin(gameTime * 0.15) * 0.2;
+    ctx.strokeRect(p.x, p.y, p.w, p.h);
+  } else if (p.type === 'ice') {
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.strokeStyle = '#88ddff';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(p.x + p.w * 0.2 + i * p.w * 0.3, p.y + p.h / 2, 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (p.type === 'fragile') {
+    ctx.lineWidth = 2;
+    if (p.isCollidable !== false) {
+      ctx.globalAlpha = 0.9;
+    } else {
+      ctx.globalAlpha = 0.2;
+    }
+    ctx.setLineDash([3, 3]);
+    ctx.strokeRect(p.x, p.y, p.w, p.h);
+    ctx.setLineDash([]);
   } else {
     switch (p.type) {
       case 'crumble':
@@ -361,6 +402,103 @@ function drawHeartPickup(ctx: CanvasRenderingContext2D, hp: HeartPickup, gameTim
   ctx.closePath();
   ctx.stroke();
   ctx.fillStyle = 'rgba(255, 68, 68, 0.35)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawAeroPickup(ctx: CanvasRenderingContext2D, ap: AeroPickup, gameTime: number): void {
+  const cx = ap.x + ap.w / 2;
+  const cy = ap.y + ap.h / 2;
+  const pulse = 0.85 + Math.sin(gameTime * 0.08) * 0.15;
+  const rotation = gameTime * 0.03;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, ap.w * 1.2 * pulse);
+  grad.addColorStop(0, 'rgba(0, 255, 136, 0.6)');
+  grad.addColorStop(1, 'rgba(0, 255, 136, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ap.w * 1.2 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#00ff88';
+  ctx.shadowBlur = 8;
+  const size = ap.w / 2.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(size, 0);
+  ctx.lineTo(0, size);
+  ctx.lineTo(-size, 0);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0, 255, 136, 0.3)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawVitalPickup(ctx: CanvasRenderingContext2D, vp: VitalPickup, gameTime: number): void {
+  const cx = vp.x + vp.w / 2;
+  const cy = vp.y + vp.h / 2;
+  const pulse = 0.85 + Math.sin(gameTime * 0.07) * 0.15;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, vp.w * 1.3 * pulse);
+  grad.addColorStop(0, 'rgba(255, 68, 68, 0.5)');
+  grad.addColorStop(1, 'rgba(255, 68, 68, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, vp.w * 1.3 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ff4444';
+  ctx.shadowBlur = 8;
+  const size = vp.w / 2.2;
+  ctx.beginPath();
+  ctx.moveTo(cx - size, cy);
+  ctx.lineTo(cx + size, cy);
+  ctx.moveTo(cx, cy - size);
+  ctx.lineTo(cx, cy + size);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPulsePickup(ctx: CanvasRenderingContext2D, pp: PulsePickup, gameTime: number): void {
+  const cx = pp.x + pp.w / 2;
+  const cy = pp.y + pp.h / 2;
+  const pulse = 0.8 + Math.sin(gameTime * 0.1) * 0.2;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, pp.w * 1.4 * pulse);
+  grad.addColorStop(0, 'rgba(255, 136, 255, 0.5)');
+  grad.addColorStop(1, 'rgba(255, 136, 255, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, pp.w * 1.4 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = '#ff88ff';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ff88ff';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, pp.w / 2.2 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255, 136, 255, 0.25)';
   ctx.fill();
   ctx.restore();
 }

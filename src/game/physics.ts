@@ -4,7 +4,6 @@ import {
   Enemy,
   Shard,
   Ripple,
-  LevelUpFragment,
   LightSource,
   ComboState,
   FloatingLabel,
@@ -14,6 +13,9 @@ import {
   BombPickup,
   LevelState,
   HeartPickup,
+  AeroPickup,
+  VitalPickup,
+  PulsePickup,
 } from '../types/game';
 import { PHYSICS as PHYSICS_CONSTS, COLORS, COMBO_TIMEOUT, COMBO_MAX, MILESTONES } from '../constants/game';
 import { scoreToLevel, getTierDefinition, levelProgressPercent, LEVEL_REWARDS, TIER_TRANSITION_LEVELS } from '../constants/levels';
@@ -27,10 +29,12 @@ export interface PhysicsState {
   shards: Shard[];
   ripples: Ripple[];
   lightSources: LightSource[];
-  levelUpFragments: LevelUpFragment[];
   activeBombs: Bomb[];
   bombPickups: BombPickup[];
   heartPickups: HeartPickup[];
+  aeroPickups: AeroPickup[];
+  vitalPickups: VitalPickup[];
+  pulsePickups: PulsePickup[];
   keys: Record<string, boolean>;
   cameraX: number;
   cameraY: number;
@@ -55,7 +59,7 @@ export interface PhysicsState {
 
 export function updatePhysics(
   state: PhysicsState,
-  setGameState: (s: 'playing' | 'level_up' | 'dead') => void,
+  setGameState: (s: 'playing' | 'dead') => void,
   generateMore: () => void
 ): void {
   state.gameTime++;
@@ -178,6 +182,21 @@ export function updatePhysics(
           p.collapseTimer = 30;
           p.originalColor = p.color;
         }
+
+        if (p.type === 'bounce') {
+          player.vy = PHYSICS_CONSTS.JUMP_FORCE * 1.5;
+          player.grounded = false;
+          player.hasLanded = false;
+        }
+
+        if (p.type === 'fragile') {
+          if (!p.fragileHits) p.fragileHits = 0;
+          p.fragileHits++;
+          if (p.fragileHits >= 1) {
+            p.isCollidable = false;
+            p.opacity = 0;
+          }
+        }
       }
     }
   }
@@ -211,9 +230,11 @@ export function updatePhysics(
   if (player.invincibleTimer > 0) player.invincibleTimer--;
 
   updateEnemies(state, setGameState);
-  updateFragments(state, setGameState);
   updateBombPickups(state);
   updateHeartPickups(state);
+  updateAeroPickups(state);
+  updateVitalPickups(state);
+  updatePulsePickups(state);
   updateActiveBombs(state);
   updateCombo(state);
   updateMilestone(state);
@@ -228,9 +249,11 @@ export function updatePhysics(
 
   state.platforms = state.platforms.filter((p) => p.x + p.w > state.cameraX);
   state.enemies = state.enemies.filter((e) => e.x + e.w > state.cameraX);
-  state.levelUpFragments = state.levelUpFragments.filter((f) => f.x + f.w > state.cameraX);
   state.bombPickups = state.bombPickups.filter((b) => b.x + b.w > state.cameraX && !b.collected);
   state.heartPickups = state.heartPickups.filter((h) => h.x + h.w > state.cameraX && !h.collected);
+  state.aeroPickups = state.aeroPickups.filter((a) => a.x + a.w > state.cameraX && !a.collected);
+  state.vitalPickups = state.vitalPickups.filter((v) => v.x + v.w > state.cameraX && !v.collected);
+  state.pulsePickups = state.pulsePickups.filter((p) => p.x + p.w > state.cameraX && !p.collected);
 
   updateParticles(state);
 
@@ -312,16 +335,59 @@ function updatePlatforms(state: PhysicsState): void {
 
 function updateEnemies(
   state: PhysicsState,
-  setGameState: (s: 'playing' | 'level_up' | 'dead') => void
+  setGameState: (s: 'playing' | 'dead') => void
 ): void {
   const { player, enemies, shards, ripples, gameTime, colors } = state;
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-    e.x += e.vx;
-    if (e.x < e.startX || e.x + e.w > e.endX) e.vx *= -1;
+    const subtype = (e as any).subtype || 'basic';
+
+    if (subtype === 'erratic') {
+      if (!(e as any).erraticTimer) (e as any).erraticTimer = 0;
+      (e as any).erraticTimer--;
+      if ((e as any).erraticTimer <= 0) {
+        e.vx = (Math.random() - 0.5) * 4;
+        (e as any).erraticTimer = 30 + Math.random() * 30;
+      }
+    } else if (subtype === 'aggressive') {
+      const dx = (player.x + player.w / 2) - (e.x + e.w / 2);
+      const dist = Math.abs(dx);
+      if (dist < 200) {
+        const direction = dx > 0 ? 1 : -1;
+        e.vx = direction * 2.5;
+      } else {
+        e.x += e.vx;
+        if (e.x < e.startX || e.x + e.w > e.endX) e.vx *= -1;
+      }
+    } else if (subtype === 'bouncing') {
+      if (e.type === 'on-platform') {
+        if (!(e as any).bounceVy) (e as any).bounceVy = 0;
+        (e as any).bounceVy += 0.4;
+        e.y += (e as any).bounceVy;
+        const groundLevel = (e as any).platformY || e.y + 50;
+        if (e.y > groundLevel) {
+          e.y = groundLevel;
+          (e as any).bounceVy = -8;
+        }
+      }
+      e.x += e.vx;
+      if (e.x < e.startX || e.x + e.w > e.endX) e.vx *= -1;
+    } else if (subtype === 'orbiting') {
+      if (!(e as any).orbitAngle) (e as any).orbitAngle = 0;
+      (e as any).orbitAngle += 0.08;
+      e.x = ((e as any).orbitCenterX || e.x) + Math.cos((e as any).orbitAngle) * ((e as any).orbitRadius || 50) - e.w / 2;
+      if (e.type === 'mid-air') {
+        e.y = ((e as any).orbitCenterY || e.y) + Math.sin((e as any).orbitAngle) * ((e as any).orbitRadius || 50) - e.h / 2;
+      }
+    } else {
+      e.x += e.vx;
+      if (e.x < e.startX || e.x + e.w > e.endX) e.vx *= -1;
+    }
 
     if (e.type === 'mid-air') {
-      e.y = (e.baseY || 0) + Math.sin(gameTime * 0.05 + (e.hoverOffset || 0)) * 75;
+      if (subtype !== 'orbiting') {
+        e.y = (e.baseY || 0) + Math.sin(gameTime * 0.05 + (e.hoverOffset || 0)) * 75;
+      }
     }
 
     if (
@@ -368,25 +434,6 @@ function updateEnemies(
   }
 }
 
-function updateFragments(
-  state: PhysicsState,
-  setGameState: (s: 'playing' | 'level_up' | 'dead') => void
-): void {
-  const { player, levelUpFragments } = state;
-  for (let i = levelUpFragments.length - 1; i >= 0; i--) {
-    const frag = levelUpFragments[i];
-    if (
-      player.x < frag.x + frag.w &&
-      player.x + player.w > frag.x &&
-      player.y < frag.y + frag.h &&
-      player.y + player.h > frag.y
-    ) {
-      levelUpFragments.splice(i, 1);
-      state.runStats.fragmentsCollected++;
-      setGameState('level_up');
-    }
-  }
-}
 
 function updateCombo(state: PhysicsState): void {
   if (state.combo.timer > 0) {
@@ -563,6 +610,105 @@ function updateHeartPickups(state: PhysicsState): void {
         color: '#ff4444',
       });
       state.runStats.rewardsCollected++;
+    }
+  }
+}
+
+function applyRandomUpgrade(state: PhysicsState): void {
+  const { player } = state;
+  const availableUpgrades: Array<'aero' | 'vital' | 'pulse'> = [];
+  if (player.upgrades.aero < 5) availableUpgrades.push('aero');
+  if (player.upgrades.vital < 3) availableUpgrades.push('vital');
+  if (player.upgrades.pulse < 5) availableUpgrades.push('pulse');
+
+  if (availableUpgrades.length === 0) return;
+  const choice = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)];
+
+  if (choice === 'aero') {
+    player.upgrades.aero++;
+  } else if (choice === 'vital') {
+    player.upgrades.vital++;
+    player.maxHealth++;
+    player.health++;
+  } else if (choice === 'pulse') {
+    player.upgrades.pulse++;
+  }
+
+  player.vertices = 3 + player.upgrades.aero + player.upgrades.vital + player.upgrades.pulse;
+  state.runStats.upgradesAcquired++;
+}
+
+function updateAeroPickups(state: PhysicsState): void {
+  const { player, aeroPickups, shards, floatingLabels, colors } = state;
+  for (let i = aeroPickups.length - 1; i >= 0; i--) {
+    const ap = aeroPickups[i];
+    if (
+      player.x < ap.x + ap.w &&
+      player.x + player.w > ap.x &&
+      player.y < ap.y + ap.h &&
+      player.y + player.h > ap.y
+    ) {
+      ap.collected = true;
+      applyRandomUpgrade(state);
+      spawnShatter(ap.x + ap.w / 2, ap.y + ap.h / 2, 8, colors.AERO_PICKUP, shards);
+      floatingLabels.push({
+        x: ap.x + ap.w / 2,
+        y: ap.y,
+        text: '+AERO',
+        life: 60,
+        maxLife: 60,
+        color: colors.AERO_PICKUP,
+      });
+    }
+  }
+}
+
+function updateVitalPickups(state: PhysicsState): void {
+  const { player, vitalPickups, shards, floatingLabels, colors } = state;
+  for (let i = vitalPickups.length - 1; i >= 0; i--) {
+    const vp = vitalPickups[i];
+    if (
+      player.x < vp.x + vp.w &&
+      player.x + player.w > vp.x &&
+      player.y < vp.y + vp.h &&
+      player.y + player.h > vp.y
+    ) {
+      vp.collected = true;
+      applyRandomUpgrade(state);
+      spawnShatter(vp.x + vp.w / 2, vp.y + vp.h / 2, 8, colors.VITAL_PICKUP, shards);
+      floatingLabels.push({
+        x: vp.x + vp.w / 2,
+        y: vp.y,
+        text: '+VITAL',
+        life: 60,
+        maxLife: 60,
+        color: colors.VITAL_PICKUP,
+      });
+    }
+  }
+}
+
+function updatePulsePickups(state: PhysicsState): void {
+  const { player, pulsePickups, shards, floatingLabels, colors } = state;
+  for (let i = pulsePickups.length - 1; i >= 0; i--) {
+    const pp = pulsePickups[i];
+    if (
+      player.x < pp.x + pp.w &&
+      player.x + player.w > pp.x &&
+      player.y < pp.y + pp.h &&
+      player.y + player.h > pp.y
+    ) {
+      pp.collected = true;
+      applyRandomUpgrade(state);
+      spawnShatter(pp.x + pp.w / 2, pp.y + pp.h / 2, 8, colors.PULSE_PICKUP, shards);
+      floatingLabels.push({
+        x: pp.x + pp.w / 2,
+        y: pp.y,
+        text: '+PULSE',
+        life: 60,
+        maxLife: 60,
+        color: colors.PULSE_PICKUP,
+      });
     }
   }
 }

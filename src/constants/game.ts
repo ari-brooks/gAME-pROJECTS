@@ -21,8 +21,13 @@ export const COLORS = {
   GATE: '#cccccc',
   ICE: '#88ddff',
   PHASING: '#cc88ff',
-  BOUNCY: '#cccccc',
+  BOUNCY: '#ff44aa',
+  SPIRAL: '#ffff00',
+  FRAGILE: '#ff6666',
   CRUMBLE_SHATTER: '#ffaa00',
+  AERO_PICKUP: '#00ff88',
+  VITAL_PICKUP: '#ff4444',
+  PULSE_PICKUP: '#ff88ff',
 };
 
 export const COLORBLIND_COLORS = {
@@ -39,8 +44,13 @@ export const COLORBLIND_COLORS = {
   GATE: '#cccccc',
   ICE: '#88ddff',
   PHASING: '#aaccff',
-  BOUNCY: '#cccccc',
+  BOUNCY: '#ffaa44',
+  SPIRAL: '#ffff88',
+  FRAGILE: '#ff8888',
   CRUMBLE_SHATTER: '#FF6600',
+  AERO_PICKUP: '#00ff88',
+  VITAL_PICKUP: '#ff8888',
+  PULSE_PICKUP: '#ffaa88',
 };
 
 export const UPGRADE_LIMITS = { aero: 5, vital: 3, pulse: 5 };
@@ -52,4 +62,4 @@ export const COMBO_MAX = 5;
 
 export const MILESTONES = [500, 1000, 2000, 3500, 5000];
 
-export const PLATFORM_TYPES = ['static', 'horizontal', 'vertical', 'crumble', 'rotating'] as const;
+export const PLATFORM_TYPES = ['static', 'horizontal', 'vertical', 'crumble', 'rotating', 'phasing', 'ice', 'bounce', 'spiral', 'fragile'] as const;

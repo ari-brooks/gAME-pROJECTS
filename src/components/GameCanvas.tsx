@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import {
   Player, Platform, Enemy, Shard, Ripple, LightSource,
-  LevelUpFragment, GameState, RunStats, Bomb, BombPickup,
+  GameState, RunStats, Bomb, BombPickup, AeroPickup, VitalPickup, PulsePickup,
 } from '../types/game';
 import { COLORS, COLORBLIND_COLORS, PHYSICS, UPGRADE_LIMITS, GHOST_DELAY } from '../constants/game';
 import { createPlayer, generateStars, spawnShatter, renderRipple, generateMorePlatforms } from '../game/entities';
@@ -25,9 +25,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
   const animUpdateRef = useRef<number>(0);
   const animDrawRef = useRef<number>(0);
   const keysRef = useRef<Record<string, boolean>>({});
-  const gameStateRef = useRef<'playing' | 'level_up' | 'dead'>('playing');
-  const levelUpChoiceRef = useRef(0);
-  const upgradeErrorTimerRef = useRef(0);
+  const gameStateRef = useRef<'playing' | 'dead'>('playing');
   const showGridRef = useRef(false);
   const runCompletedRef = useRef(false);
 
@@ -41,10 +39,12 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     const shards: Shard[] = [];
     const ripples: Ripple[] = [];
     const lightSources: LightSource[] = [];
-    const levelUpFragments: LevelUpFragment[] = [];
     const activeBombs: Bomb[] = [];
     const bombPickups: BombPickup[] = [];
-    const heartPickups = [];
+    const heartPickups: any[] = [];
+    const aeroPickups: AeroPickup[] = [];
+    const vitalPickups: VitalPickup[] = [];
+    const pulsePickups: PulsePickup[] = [];
 
     const startPlatform: Platform = {
       x: 50, y: canvas.height - 100, w: 200, h: 10,
@@ -57,7 +57,7 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     player.hasLanded = true;
 
     const genState = {
-      platforms, enemies, levelUpFragments, bombPickups, heartPickups,
+      platforms, enemies, bombPickups, heartPickups, aeroPickups, vitalPickups, pulsePickups,
       generationX: 0,
       platformsGeneratedCount: 0,
       score: 0,
@@ -74,10 +74,12 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       shards,
       ripples,
       lightSources,
-      levelUpFragments,
       activeBombs,
       bombPickups,
       heartPickups,
+      aeroPickups,
+      vitalPickups,
+      pulsePickups,
       keys: keysRef.current,
       cameraX: 0,
       cameraY: 0,
@@ -137,11 +139,8 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
 
     const stars = generateStars(canvas.width, canvas.height);
 
-    function doSetGameState(s: 'playing' | 'level_up' | 'dead') {
+    function doSetGameState(s: 'playing' | 'dead') {
       gameStateRef.current = s;
-      if (s === 'level_up') {
-        levelUpChoiceRef.current = 0;
-      }
       if (s === 'dead' && !runCompletedRef.current) {
         runCompletedRef.current = true;
         const state = stateRef.current;
@@ -159,9 +158,11 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
       const genState = {
         platforms: state.platforms,
         enemies: state.enemies,
-        levelUpFragments: state.levelUpFragments,
         bombPickups: state.bombPickups,
         heartPickups: state.heartPickups,
+        aeroPickups: state.aeroPickups,
+        vitalPickups: state.vitalPickups,
+        pulsePickups: state.pulsePickups,
         generationX: state.generationX,
         platformsGeneratedCount: state.platformsGeneratedCount,
         score: state.score,
@@ -194,10 +195,12 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           enemies: state.enemies,
           shards: state.shards,
           ripples: state.ripples,
-          levelUpFragments: state.levelUpFragments,
           activeBombs: state.activeBombs,
           bombPickups: state.bombPickups,
           heartPickups: state.heartPickups,
+          aeroPickups: state.aeroPickups,
+          vitalPickups: state.vitalPickups,
+          pulsePickups: state.pulsePickups,
           stars,
           positionHistory: state.positionHistory,
           cameraX: state.cameraX,
@@ -206,8 +209,6 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
           glitchTimer: state.glitchTimer,
           screenShake: state.screenShake,
           gameState: gameStateRef.current,
-          levelUpChoice: levelUpChoiceRef.current,
-          upgradeErrorTimer: upgradeErrorTimerRef.current,
           colors: state.colors,
           showGrid: showGridRef.current,
           combo: state.combo,
@@ -237,15 +238,6 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code === 'KeyG') { showGridRef.current = !showGridRef.current; return; }
-
-      if (gameStateRef.current === 'level_up') {
-        if (e.code === 'ArrowUp') levelUpChoiceRef.current = (levelUpChoiceRef.current - 1 + 3) % 3;
-        if (e.code === 'ArrowDown') levelUpChoiceRef.current = (levelUpChoiceRef.current + 1) % 3;
-        if (e.code === 'Enter' || e.code === 'Space') {
-          handleUpgradeSelect(levelUpChoiceRef.current);
-        }
-        return;
-      }
 
       if (e.code === 'KeyQ') {
         restartGame(canvas);
@@ -360,25 +352,30 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     });
   }
 
-  function handleUpgradeSelect(choice: number) {
+  function applyRandomUpgrade() {
     const state = stateRef.current;
     if (!state) return;
     const { player } = state;
-    let upgraded = false;
-    if (choice === 0 && player.upgrades.aero < UPGRADE_LIMITS.aero) {
-      player.upgrades.aero++; upgraded = true;
-    } else if (choice === 1 && player.upgrades.vital < UPGRADE_LIMITS.vital) {
-      player.upgrades.vital++; player.maxHealth++; player.health++; upgraded = true;
-    } else if (choice === 2 && player.upgrades.pulse < UPGRADE_LIMITS.pulse) {
-      player.upgrades.pulse++; upgraded = true;
+    const availableUpgrades: Array<'aero' | 'vital' | 'pulse'> = [];
+    if (player.upgrades.aero < UPGRADE_LIMITS.aero) availableUpgrades.push('aero');
+    if (player.upgrades.vital < UPGRADE_LIMITS.vital) availableUpgrades.push('vital');
+    if (player.upgrades.pulse < UPGRADE_LIMITS.pulse) availableUpgrades.push('pulse');
+
+    if (availableUpgrades.length === 0) return;
+    const choice = availableUpgrades[Math.floor(Math.random() * availableUpgrades.length)];
+
+    if (choice === 'aero') {
+      player.upgrades.aero++;
+    } else if (choice === 'vital') {
+      player.upgrades.vital++;
+      player.maxHealth++;
+      player.health++;
+    } else if (choice === 'pulse') {
+      player.upgrades.pulse++;
     }
-    if (upgraded) {
-      player.vertices = 3 + player.upgrades.aero + player.upgrades.vital + player.upgrades.pulse;
-      state.runStats.upgradesAcquired++;
-      gameStateRef.current = 'playing';
-    } else {
-      upgradeErrorTimerRef.current = 30;
-    }
+
+    player.vertices = 3 + player.upgrades.aero + player.upgrades.vital + player.upgrades.pulse;
+    state.runStats.upgradesAcquired++;
   }
 
   function restartGame(canvas: HTMLCanvasElement) {
@@ -397,15 +394,8 @@ export default function GameCanvas({ gameState, setGameState, settings, onRunCom
     <canvas
       ref={canvasRef}
       className="block w-full h-full"
-      onTouchStart={(e) => {
-        e.preventDefault();
-        if (gameStateRef.current === 'level_up') {
-          handleUpgradeSelect(levelUpChoiceRef.current);
-        }
-      }}
       style={{ touchAction: 'none' }}
     />
   );
 }
 
-export { };

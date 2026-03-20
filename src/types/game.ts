@@ -1,4 +1,4 @@
-export type GameState = 'menu' | 'playing' | 'level_up' | 'dead' | 'leaderboard' | 'settings' | 'name_entry';
+export type GameState = 'menu' | 'playing' | 'dead' | 'leaderboard' | 'settings' | 'name_entry';
 
 export interface Player {
   x: number;
@@ -34,7 +34,7 @@ export interface Platform {
   y: number;
   w: number;
   h: number;
-  type: 'static' | 'horizontal' | 'vertical' | 'crumble' | 'rotating' | 'phasing';
+  type: 'static' | 'horizontal' | 'vertical' | 'crumble' | 'rotating' | 'phasing' | 'ice' | 'bounce' | 'spiral' | 'fragile';
   color: string;
   isPhasedOut?: boolean;
   isCollidable?: boolean;
@@ -53,6 +53,7 @@ export interface Platform {
   jitterY?: number;
   vy?: number;
   opacity?: number;
+  fragileHits?: number;
 }
 
 export interface Enemy {
@@ -64,8 +65,17 @@ export interface Enemy {
   startX: number;
   endX: number;
   type: 'on-platform' | 'mid-air';
+  subtype?: 'basic' | 'erratic' | 'aggressive' | 'bouncing' | 'orbiting';
   baseY?: number;
   hoverOffset?: number;
+  targetX?: number;
+  targetY?: number;
+  bounceVy?: number;
+  orbitCenterX?: number;
+  orbitCenterY?: number;
+  orbitRadius?: number;
+  orbitAngle?: number;
+  erraticTimer?: number;
 }
 
 export interface Shard {
@@ -93,12 +103,6 @@ export interface LightSource {
   radius: number;
 }
 
-export interface LevelUpFragment {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
 
 export interface Bomb {
   x: number;
@@ -192,6 +196,30 @@ export interface LeaderboardEntry {
 }
 
 export interface HeartPickup {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  collected: boolean;
+}
+
+export interface AeroPickup {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  collected: boolean;
+}
+
+export interface VitalPickup {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  collected: boolean;
+}
+
+export interface PulsePickup {
   x: number;
   y: number;
   w: number;
